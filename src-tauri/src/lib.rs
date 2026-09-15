@@ -327,6 +327,20 @@ fn install_games_from_paths(
 }
 
 #[tauri::command]
+fn scan_game_sources(app: AppHandle, source_dirs: Vec<String>) -> Result<ScanGamesSummary, String> {
+    games::install::scan_game_sources(&app, source_dirs)
+}
+
+#[tauri::command]
+fn install_game_sources(
+    app: AppHandle,
+    source_dirs: Vec<String>,
+    game_ids: Vec<String>,
+) -> Result<InstallGamesSummary, String> {
+    games::install::install_game_sources(&app, source_dirs, game_ids)
+}
+
+#[tauri::command]
 fn export_games_archive(app: AppHandle) -> Result<ExportGamesArchiveSummary, String> {
     logging::event("games_export_requested", &[]);
 
@@ -373,6 +387,7 @@ pub fn run() {
         .manage(DeepLinkState::default())
         .plugin(tauri_plugin_log::Builder::new().build())
         .plugin(tauri_plugin_deep_link::init())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let app_handle = app.handle().clone();
             fit_main_window_to_screen_height(&app_handle);
@@ -415,8 +430,10 @@ pub fn run() {
             classify_games_by_categories,
             scan_games_from_files,
             scan_games_from_paths,
+            scan_game_sources,
             install_games_from_files,
             install_games_from_paths,
+            install_game_sources,
             export_games_archive
         ])
         .run(tauri::generate_context!())

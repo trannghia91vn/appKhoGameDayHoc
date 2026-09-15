@@ -28,15 +28,17 @@ Dang ky:
 - `tauri_plugin_single_instance` de app dang chay nhan argv tu instance moi.
 - `tauri_plugin_log` de ghi log.
 - Protocol bat dong bo `ytasset`.
-- Commands `last_deep_link_status`, `list_games`, `open_deep_link`, `delete_games`, `scan_games_from_files`, `install_games_from_files`, `list_categories`, `save_category`, `delete_category`, `classify_games_by_categories`; deep link tu OS duoc Rust xu ly truc tiep qua `handle_deep_link`.
+- Commands `last_deep_link_status`, `list_games`, `open_deep_link`, `delete_games`, `scan_games_from_files`, `install_games_from_files`, `scan_game_sources`, `install_game_sources`, `list_categories`, `save_category`, `delete_category`, `classify_games_by_categories`; deep link tu OS duoc Rust xu ly truc tiep qua `handle_deep_link`.
 
 Commands:
 
 - `list_games() -> Vec<GameManifest>`: tra games da cai cho launcher.
 - `last_deep_link_status(app)`: tra status deep link gan nhat de frontend replay loi/trang thai neu app cold-start tu PowerPoint truoc khi React listen.
 - `open_deep_link(app, url)`: di qua `handle_deep_link`, parse URL, focus launcher, chon game trong `Kho game`, log ket qua va emit `deep-link-status`; frontend sau do load game vao iframe ben phai khi game list da san sang.
-- `scan_games_from_files(app, files)`: quet cac file `.html` trong folder/USB, tao game ID tu ten file, va tra danh sach file moi/da co de frontend review.
-- `install_games_from_files(app, files, gameIds)`: chi sync cac file HTML moi da duoc user xac nhan vao `<app-data>/games/<game-id>/index.html` kem `game.json` toi thieu.
+- `scan_games_from_files(app, files)`: fallback preview/browser de quet cac file `.html` don.
+- `install_games_from_files(app, files, gameIds)`: fallback de sync cac file HTML don vao `<app-data>/games/<game-id>/index.html`.
+- `scan_game_sources(app, sourceDirs)`: quet folder/USB bang duong dan native, nhan dien folder game va HTML don le.
+- `install_game_sources(app, sourceDirs, gameIds)`: copy nguyen folder game hoac HTML don moi da xac nhan vao app data; khong ghi de game da co.
 - `delete_games(app, gameIds)`: chi xoa thu muc game da cai trong app data; khong xoa game bundle.
 - `classify_games_by_categories(app)`: doc categories runtime, doi keywords va ten game ve chu khong dau, sau do cap nhat `category` trong `game.json` cua game da cai neu ten file/title khop keyword.
 
@@ -82,19 +84,19 @@ Neu catalog lon hon:
 
 ## Cap nhat games tu Cài đặt
 
-Frontend dung input directory picker de doc toan bo file trong folder/USB. Cac file duoc giu trong state tam thoi va gui cho Rust command scan_games_from_files de preview; frontend khong tu quyet dinh game nao hop le.
+Trong Tauri runtime, frontend dung native dialog plugin de lay duong dan folder/USB va gui path cho Rust. Rust la noi quet filesystem, nhan dien game hop le, va copy file vao app data. Fallback browser/preview van giu input directory picker va luong HTML don.
 
 Quy trinh bat buoc:
 
-1. User chon folder/USB.
-2. Frontend giu folder da chon; khi user bam `Quet HTML`, frontend doc file bytes va relativePath, sau do goi scan_games_from_files.
-3. Rust normalize path, bo qua .DS_Store/Thumbs.db/__MACOSX, chi nhan `.html`/`.htm`, tao game ID tu ten file, va so sanh voi catalog hien tai.
-4. Rust tra danh sach DiscoveredGame, trong do isNew cho biet game chua co trong catalog.
-5. Frontend hien danh sach checkbox; file moi duoc chon mac dinh, file da co trong kho bi khoa de tranh ghi de.
-6. User bam Xac nhan cap nhat. Frontend gui toan bo source bytes kem gameIds moi da chon cho install_games_from_files.
-7. Rust chi ghi cac game ID moi duoc chon; file da co trong catalog khong bi ghi de.
+1. User chon mot hoac nhieu folder nguon.
+2. Khi user bam `Quet game`, frontend goi `scan_game_sources` voi danh sach path folder.
+3. Rust nhan dien folder game neu folder co `index.html`, hoac `game.json` co `entry` tro toi HTML hop le; neu folder nguon khong phai game, Rust quet direct child folders va HTML don le o root.
+4. Rust tao game ID tu ten folder game hoac ten file HTML, bo qua `.DS_Store`, `Thumbs.db`, `__MACOSX`, symlink, path traversal, game trung ID, folder qua lon, va file khong hop le.
+5. Frontend hien danh sach checkbox; game moi duoc chon mac dinh, game da co trong kho bi khoa de tranh ghi de.
+6. User bam Xac nhan cap nhat. Frontend goi `install_game_sources` voi sourceDirs va gameIds moi da chon.
+7. Rust copy nguyen folder game vao `<app-data>/games/<game-id>/` hoac copy HTML don thanh `index.html`, ghi `game.json` da sanitize, va khong ghi de game da co.
 
-Backend khong tin path tu frontend: no normalize segment, tao/validate game ID tu ten file HTML, bo qua file he thong, va khong cho ghi ra ngoai app data. Khi game ID da co trong catalog, backend bo qua de tranh ghi de. Lenh delete_games validate tung game ID va chi thao tac trong app data/games.
+Backend van validate game ID va resource path tap trung. Lenh delete_games chi thao tac trong app data/games.
 
 ## Categories trong Cài đặt
 

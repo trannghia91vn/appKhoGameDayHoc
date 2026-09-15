@@ -51,7 +51,32 @@ Truong can giu:
 
 ## Game nhieu file
 
-Luồng hiện tại ưu tiên game HTML đơn file. Neu game can CSS/JS/image rieng, can mo rong updater de copy ca folder asset kem theo va giu validate path trong `read_installed_resource`.
+P1 ho tro game nhieu file theo quy uoc moi game la mot folder rieng. Folder game can co `index.html`, hoac co `game.json` voi truong `entry` tro toi mot file HTML hop le trong cung folder.
+
+Vi du:
+
+```text
+USB/
+  game-a/
+    index.html
+    images/a.png
+    data.json
+  game-b/
+    game.json
+    play.html
+    assets/card.png
+```
+
+Khi import, app chep nguyen cay file hop le vao:
+
+```text
+<app-data>/games/game-a/index.html
+<app-data>/games/game-a/images/a.png
+<app-data>/games/game-b/play.html
+<app-data>/games/game-b/assets/card.png
+```
+
+Moi game chay doc lap qua `ytasset://game/<game-id>/<entry>`, nen asset relative nhu `images/a.png`, `assets/card.png`, CSS, JS, audio se duoc phuc vu trong dung folder game.
 
 ## Nguyen tac noi dung game
 
@@ -86,13 +111,14 @@ Toi thieu:
 
 ## Cap nhat bang folder/USB trong app
 
-Trang `Cài đặt` cho phep chon mot folder tu may hoac USB co nhieu file `.html`, vi du:
+Trang `Cài đặt` cho phep chon mot hoac nhieu folder tu may/USB. App quet hai dang nguon:
 
-- `usb-games/toan-lop-4.html`
-- `usb-games/tieng-viet-5.html`
-- `usb-games/sub-folder/bai-doc.html`
+- Folder game: `usb-games/game-a/index.html` hoac `usb-games/game-b/game.json` + entry HTML.
+- HTML don le: `usb-games/toan-lop-4.html`, `usb-games/tieng-viet-5.html`.
 
-Sau khi chon folder, user bam `Quet HTML`. App tao game ID tu ten file HTML, so sanh voi catalog hien tai, va chi dong bo cac file HTML moi. Khi dong bo, moi file HTML duoc chep vao `<app-data>/games/<game-id>/index.html` kem metadata `game.json` toi thieu:
+Neu chon `USB/` co `game-a/` va `game-b/`, app scan ra 2 game folder rieng. Neu chon `USB/` co `game-a.html` va `game-b.html`, app scan ra 2 game HTML don rieng.
+
+Sau khi chon folder, user bam `Quet game`. App tao game ID tu ten folder game hoac ten file HTML, so sanh voi catalog hien tai, va chi dong bo cac game moi. Khi dong bo HTML don, moi file HTML duoc chep vao `<app-data>/games/<game-id>/index.html` kem metadata `game.json` toi thieu:
 
 ```json
 {
@@ -104,11 +130,11 @@ Sau khi chon folder, user bam `Quet HTML`. App tao game ID tu ten file HTML, so 
 }
 ```
 
-Neu `game-id` tao tu ten file da co trong catalog, file do duoc danh dau `Da co trong kho` va khong bi chep de. Deep link van la `yeutregame://play/<game-id>`.
+Neu `game-id` tao tu ten folder/file da co trong catalog, game do duoc danh dau `Da co trong kho` va khong bi chep de. Deep link van la `yeutregame://play/<game-id>`.
 
 ## Quy trinh scan va xac nhan
 
-Khi cap nhat tu Cài đặt, launcher chi ghi vao app sau khi user bam `Xac nhan cap nhat`. Cac file HTML moi duoc chon san; file da co trong kho hien rieng va bi khoa de tranh ghi de.
+Khi cap nhat tu Cài đặt, launcher chi ghi vao app sau khi user bam `Xac nhan cap nhat`. Cac game moi duoc chon san; game da co trong kho hien rieng va bi khoa de tranh ghi de.
 
-Neu scan khong thay file hop le, kiem tra lai folder da chon co file `.html`/`.htm`. File khong phai HTML, file trung game ID, path khong hop le, `.DS_Store`, `Thumbs.db`, va `__MACOSX` se bi bo qua.
+Neu scan khong thay game hop le, kiem tra lai folder da chon co folder game voi entry HTML hoac file `.html`/`.htm`. File/folder trung game ID, path khong hop le, symlink, `.DS_Store`, `Thumbs.db`, va `__MACOSX` se bi bo qua.
 

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import ReactDOM from "react-dom/client";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { open } from "@tauri-apps/plugin-dialog";
 import "./styles.css";
 
 type Game = {
@@ -75,6 +76,8 @@ type GameScanCandidate = Game & {
   fileCount: number;
   isNew: boolean;
   sourcePath: string;
+  sourceKind: "folder" | "html";
+  totalBytes: number;
 };
 
 type ScanGamesSummary = {
@@ -146,6 +149,11 @@ function htmlSourcePathFiles(files: File[]) {
     .filter((file): file is InstallGamePath => file !== null);
 
   return sourceFiles.length === htmlFiles.length ? sourceFiles : [];
+}
+
+function displayNameForSourcePath(path: string) {
+  const parts = path.split(/[\/]/).filter(Boolean);
+  return parts[parts.length - 1] || path;
 }
 
 type LoginScreenProps = {
@@ -422,6 +430,8 @@ function buildPreviewScanResult(files: File[], installedGames: Game[]): ScanGame
       fileCount: 1,
       isNew: !installedIds.has(id),
       sourcePath,
+      sourceKind: "html",
+      totalBytes: file.size,
     });
   }
 
@@ -610,6 +620,7 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
   const [isDeletingCategory, setIsDeletingCategory] = useState(false);
   const [debugEntries, setDebugEntries] = useState<DebugEntry[]>([]);
   const [pendingSourceFiles, setPendingSourceFiles] = useState<File[]>([]);
+  const [pendingSourceDirs, setPendingSourceDirs] = useState<string[]>([]);
   const [sourceFiles, setSourceFiles] = useState<InstallGameFile[]>([]);
   const [sourceFilePaths, setSourceFilePaths] = useState<InstallGamePath[]>([]);
   const [selectedSourceName, setSelectedSourceName] = useState<string | null>(null);
@@ -1142,10 +1153,43 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
     };
   }, []);
 
-  const chooseSourceFolder = useCallback(() => {
+  const chooseSourceFolder = useCallback(async () => {
     if (!isAdmin) {
       setError("Tài khoản User không được cập nhật kho game.");
       setStatus("Cài đặt chỉ dành cho Admin.");
+      return;
+    }
+
+    if (isTauriRuntime) {
+      try {
+        const selected = await open({ directory: true, multiple: true });
+        const sourceDirs = Array.isArray(selected) ? selected : selected ? [selected] : [];
+        setInstallSummary(null);
+        setScanResult(null);
+        setSelectedGameIds([]);
+        setSourceFiles([]);
+        setSourceFilePaths([]);
+        setPendingSourceFiles([]);
+        setPendingSourceDirs(sourceDirs);
+        setError(null);
+
+        if (sourceDirs.length === 0) {
+          setSelectedSourceName(null);
+          setStatus("Chưa chọn folder chứa game.");
+          return;
+        }
+
+        const sourceName = sourceDirs.length === 1
+          ? displayNameForSourcePath(sourceDirs[0])
+          : sourceDirs.length + " folder đã chọn";
+        setSelectedSourceName(sourceName);
+        setStatus("Đã chọn " + sourceName + ". Bấm Quét game để tìm folder game hoặc file HTML mới.");
+      } catch (err) {
+        const message = errorMessage(err);
+        console.error("[YeuTre debug] open source folder failed", err);
+        setError(message);
+        setStatus("Không thể mở hộp thoại chọn folder.");
+      }
       return;
     }
 
@@ -1155,8 +1199,69 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
     }
 
     input.value = "";
+    input.removeAttribute("accept");
     input.setAttribute("webkitdirectory", "");
     input.setAttribute("directory", "");
+    input.click();
+  }, [isAdmin]);
+
+
+  const chooseSourceFiles = useCallback(async () => {
+    if (!isAdmin) {
+      setError("Tài khoản User không được cập nhật kho game.");
+      setStatus("Cài đặt chỉ dành cho Admin.");
+      return;
+    }
+
+    if (isTauriRuntime) {
+      try {
+        const selected = await open({
+          filters: [{ name: "HTML games", extensions: ["html", "htm"] }],
+          multiple: true,
+        });
+        const selectedPaths = Array.isArray(selected) ? selected : selected ? [selected] : [];
+        const pathFiles = selectedPaths
+          .filter((path) => isHtmlFileName(path))
+          .map((path) => ({ relativePath: displayNameForSourcePath(path), path }));
+
+        setInstallSummary(null);
+        setScanResult(null);
+        setSelectedGameIds([]);
+        setSourceFiles([]);
+        setSourceFilePaths(pathFiles);
+        setPendingSourceFiles([]);
+        setPendingSourceDirs([]);
+        setError(null);
+
+        if (pathFiles.length === 0) {
+          setSelectedSourceName(null);
+          setStatus("Chưa chọn file HTML nào.");
+          return;
+        }
+
+        const sourceName = pathFiles.length === 1
+          ? pathFiles[0].relativePath
+          : pathFiles.length + " file HTML đã chọn";
+        setSelectedSourceName(sourceName);
+        setStatus("Đã chọn " + sourceName + ". Bấm Quét game để kiểm tra file mới.");
+      } catch (err) {
+        const message = errorMessage(err);
+        console.error("[YeuTre debug] open source files failed", err);
+        setError(message);
+        setStatus("Không thể mở hộp thoại chọn file HTML.");
+      }
+      return;
+    }
+
+    const input = folderInputRef.current;
+    if (!input) {
+      return;
+    }
+
+    input.value = "";
+    input.removeAttribute("webkitdirectory");
+    input.removeAttribute("directory");
+    input.setAttribute("accept", ".html,.htm,text/html");
     input.click();
   }, [isAdmin]);
 
@@ -1175,6 +1280,7 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
     setSourceFiles([]);
     setSourceFilePaths([]);
     setPendingSourceFiles(files);
+    setPendingSourceDirs([]);
     setError(null);
 
     if (files.length === 0) {
@@ -1184,8 +1290,13 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
     }
 
     const firstRelativePath = fileRelativePath(files[0]);
-    const rootName = firstRelativePath.split("/")[0] || "Thư mục đã chọn";
     const htmlFiles = files.filter((file) => isHtmlFileName(file.name));
+    const isDirectorySelection = firstRelativePath.includes("/");
+    const rootName = isDirectorySelection
+      ? firstRelativePath.split("/")[0] || "Thư mục đã chọn"
+      : htmlFiles.length === 1
+        ? htmlFiles[0].name
+        : htmlFiles.length + " file HTML đã chọn";
     const oversizedHtmlCount = htmlFiles.filter((file) => file.size > MAX_BROWSER_HTML_FILE_BYTES).length;
     const pathModeReady = isTauriRuntime && htmlFiles.length > 0 && htmlSourcePathFiles(files).length === htmlFiles.length;
     setSelectedSourceName(rootName);
@@ -1194,7 +1305,7 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
         " file HTML" +
         (pathModeReady ? " (chế độ nhẹ)." : ".") +
         (oversizedHtmlCount > 0 ? " " + oversizedHtmlCount + " file quá lớn sẽ bị bỏ qua." : "") +
-        " Bấm Quét HTML để tìm file mới.",
+        " Bấm Quét game để tìm game mới.",
     );
   }, [isAdmin]);
 
@@ -1205,9 +1316,9 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
       return;
     }
 
-    if (pendingSourceFiles.length === 0) {
-      setError("Bạn cần chọn folder hoặc USB chứa file HTML trước.");
-      setStatus("Chưa có folder để quét.");
+    if (pendingSourceDirs.length === 0 && pendingSourceFiles.length === 0 && sourceFilePaths.length === 0) {
+      setError("Bạn cần chọn folder, USB hoặc file HTML trước.");
+      setStatus("Chưa có nguồn để quét.");
       return;
     }
 
@@ -1217,55 +1328,59 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
       setScanResult(null);
       setSelectedGameIds([]);
       setError(null);
-      setStatus("Đang phân tích file HTML trong folder đã chọn...");
+      setStatus("Đang phân tích folder game và file HTML trong nguồn đã chọn...");
 
-      const pathFiles = isTauriRuntime ? htmlSourcePathFiles(pendingSourceFiles) : [];
+      const selectedPathFiles = sourceFilePaths.length > 0 ? sourceFilePaths : htmlSourcePathFiles(pendingSourceFiles);
+      const pathFiles = isTauriRuntime ? selectedPathFiles : [];
+      const canUseSourceDirMode = isTauriRuntime && pendingSourceDirs.length > 0;
       const canUsePathMode = isTauriRuntime && pathFiles.length > 0;
       let incomingFiles: InstallGameFile[] = [];
 
-      if (!canUsePathMode && pendingSourceFiles.length > MAX_BROWSER_SCAN_FILES) {
+      if (!canUseSourceDirMode && !canUsePathMode && pendingSourceFiles.length > MAX_BROWSER_SCAN_FILES) {
         throw new Error("Folder có quá nhiều file để quét bằng chế độ browser. Hãy mở bằng app Tauri để dùng chế độ nhẹ.");
       }
 
-      const result = canUsePathMode
-        ? await invoke<ScanGamesSummary>("scan_games_from_paths", { files: pathFiles })
-        : isTauriRuntime
-          ? await invoke<ScanGamesSummary>("scan_games_from_files", {
-            files: incomingFiles = await Promise.all(
-              pendingSourceFiles.map(async (file) => {
-                if (file.size > MAX_BROWSER_HTML_FILE_BYTES) {
-                  return { relativePath: fileRelativePath(file), bytes: [] };
-                }
-                return {
-                  relativePath: fileRelativePath(file),
-                  bytes: Array.from(new Uint8Array(await file.arrayBuffer())),
-                };
-              }),
-            ),
-          })
-          : buildPreviewScanResult(pendingSourceFiles, games);
+      const result = canUseSourceDirMode
+        ? await invoke<ScanGamesSummary>("scan_game_sources", { sourceDirs: pendingSourceDirs })
+        : canUsePathMode
+          ? await invoke<ScanGamesSummary>("scan_games_from_paths", { files: pathFiles })
+          : isTauriRuntime
+            ? await invoke<ScanGamesSummary>("scan_games_from_files", {
+              files: incomingFiles = await Promise.all(
+                pendingSourceFiles.map(async (file) => {
+                  if (file.size > MAX_BROWSER_HTML_FILE_BYTES) {
+                    return { relativePath: fileRelativePath(file), bytes: [] };
+                  }
+                  return {
+                    relativePath: fileRelativePath(file),
+                    bytes: Array.from(new Uint8Array(await file.arrayBuffer())),
+                  };
+                }),
+              ),
+            })
+            : buildPreviewScanResult(pendingSourceFiles, games);
       const newGameIds = result.games.filter((game) => game.isNew).map((game) => game.id);
 
       setSourceFilePaths(canUsePathMode ? pathFiles : []);
       setSourceFiles(canUsePathMode ? [] : incomingFiles);
       appendDebug("scan completed", {
-        mode: canUsePathMode ? "paths" : "bytes",
+        mode: canUseSourceDirMode ? "source-dirs" : canUsePathMode ? "paths" : "bytes",
         htmlFiles: result.games.length,
         skippedFiles: result.skippedFiles,
       });
       setScanResult(result);
       setSelectedGameIds(newGameIds);
       setStatus(
-        "Đã quét " + result.games.length + " file HTML, phát hiện " + newGameIds.length +
-          " file mới. Bấm Xác nhận cập nhật để đồng bộ file mới.",
+        "Đã quét " + result.games.length + " game, phát hiện " + newGameIds.length +
+          " game mới. Bấm Xác nhận cập nhật để đồng bộ game mới.",
       );
     } catch (err) {
       setError(String(err));
-      setStatus("Không thể quét file HTML từ folder đã chọn.");
+      setStatus("Không thể quét nguồn game đã chọn.");
     } finally {
       setIsScanningGames(false);
     }
-  }, [appendDebug, games, pendingSourceFiles]);
+  }, [appendDebug, games, pendingSourceDirs, pendingSourceFiles, sourceFilePaths]);
 
   const toggleGameSelection = useCallback((gameId: string) => {
     setSelectedGameIds((current) =>
@@ -1274,8 +1389,8 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
   }, []);
 
   const updateGamesFromSelectedFolder = useCallback(async () => {
-    if ((sourceFiles.length === 0 && sourceFilePaths.length === 0) || !scanResult) {
-      setError("Bạn cần bấm Quét HTML trước khi xác nhận cập nhật.");
+    if ((pendingSourceDirs.length === 0 && sourceFiles.length === 0 && sourceFilePaths.length === 0) || !scanResult) {
+      setError("Bạn cần bấm Quét game trước khi xác nhận cập nhật.");
       setStatus("Chưa có kết quả quét để cập nhật.");
       return;
     }
@@ -1285,26 +1400,31 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
     );
 
     if (newSelectedGameIds.length === 0) {
-      setError("Không có file HTML mới nào để cập nhật.");
-      setStatus("Tất cả file HTML đã có trong kho hoặc chưa được chọn.");
+      setError("Không có game mới nào để cập nhật.");
+      setStatus("Tất cả game đã có trong kho hoặc chưa được chọn.");
       return;
     }
 
     try {
       setIsUpdatingGames(true);
       setError(null);
-      setStatus("Đang đồng bộ các file HTML mới đã xác nhận...");
+      setStatus("Đang đồng bộ các game mới đã xác nhận...");
 
       const summary = isTauriRuntime
-        ? sourceFilePaths.length > 0
-          ? await invoke<InstallGamesSummary>("install_games_from_paths", {
-            files: sourceFilePaths,
+        ? pendingSourceDirs.length > 0
+          ? await invoke<InstallGamesSummary>("install_game_sources", {
+            sourceDirs: pendingSourceDirs,
             gameIds: newSelectedGameIds,
           })
-          : await invoke<InstallGamesSummary>("install_games_from_files", {
-            files: sourceFiles,
-            gameIds: newSelectedGameIds,
-          })
+          : sourceFilePaths.length > 0
+            ? await invoke<InstallGamesSummary>("install_games_from_paths", {
+              files: sourceFilePaths,
+              gameIds: newSelectedGameIds,
+            })
+            : await invoke<InstallGamesSummary>("install_games_from_files", {
+              files: sourceFiles,
+              gameIds: newSelectedGameIds,
+            })
         : {
           copiedFiles: newSelectedGameIds.length,
           installedGames: newSelectedGameIds.length,
@@ -1322,6 +1442,7 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
 
       setInstallSummary(summary);
       setPendingSourceFiles([]);
+      setPendingSourceDirs([]);
       setSourceFiles([]);
       setSourceFilePaths([]);
       setScanResult(null);
@@ -1332,8 +1453,8 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
       }
       setActivePage("library");
       setStatus(
-        "Đã đồng bộ " + summary.copiedFiles +
-          " file HTML mới. Kho game đã được làm mới.",
+        "Đã đồng bộ " + summary.installedGames +
+          " game mới. Kho game đã được làm mới.",
       );
     } catch (err) {
       setError(String(err));
@@ -1341,7 +1462,7 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
     } finally {
       setIsUpdatingGames(false);
     }
-  }, [isAdmin, loadGames, scanResult, selectedGameIds, sourceFilePaths, sourceFiles]);
+  }, [isAdmin, loadGames, pendingSourceDirs, scanResult, selectedGameIds, sourceFilePaths, sourceFiles]);
 
   const exportGamesArchive = useCallback(async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -1928,8 +2049,8 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
               <p className="eyebrow">Cập nhật games</p>
               <h3>Đồng bộ games từ folder hoặc USB</h3>
               <p className="settings-copy">
-                Chọn folder hoặc USB chứa nhiều file <code>.html</code>. Sau đó bấm Quét HTML để app so sánh
-                với kho hiện tại; chỉ những file mới được chọn để đồng bộ khi bấm Xác nhận cập nhật.
+                Chọn folder/USB chứa folder game, hoặc chọn trực tiếp nhiều file <code>.html</code>. Sau đó bấm Quét game để app so sánh
+                với kho hiện tại; chỉ những game mới được chọn để đồng bộ khi bấm Xác nhận cập nhật.
               </p>
             </div>
 
@@ -1941,28 +2062,35 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
                 multiple
                 onChange={(event) => void handleFolderSelected(event)}
               />
-              <button onClick={chooseSourceFolder} type="button" className="secondary-button">
+              <button onClick={() => void chooseSourceFolder()} type="button" className="secondary-button">
                 Chọn folder / USB
               </button>
+              <button onClick={() => void chooseSourceFiles()} type="button" className="secondary-button">
+                Chọn file HTML
+              </button>
               <button
-                disabled={pendingSourceFiles.length === 0 || isScanningGames || isUpdatingGames}
+                disabled={(pendingSourceDirs.length === 0 && pendingSourceFiles.length === 0 && sourceFilePaths.length === 0) || isScanningGames || isUpdatingGames}
                 onClick={() => void scanGamesFromSelectedFolder()}
                 type="button"
                 className="scan-button"
               >
-                {isScanningGames ? "Đang quét..." : "Quét HTML"}
+                {isScanningGames ? "Đang quét..." : "Quét game"}
               </button>
               <div className="selected-source">
                 <span>Nguồn đã chọn</span>
                 <strong>{selectedSourceName ?? "Chưa chọn"}</strong>
                 <small>
                   {isScanningGames
-                    ? "Đang phân tích các file .html..."
+                    ? "Đang phân tích folder game và file .html..."
                     : scanResult
-                      ? scanResult.games.length + " file HTML · " + scanNewCount + " file mới"
-                      : pendingSourceFiles.length > 0
-                        ? pendingSourceFiles.length + " file trong folder · chờ quét HTML"
-                        : "Chọn folder chứa nhiều file HTML"}
+                      ? scanResult.games.length + " game · " + scanNewCount + " game mới"
+                      : pendingSourceDirs.length > 0
+                        ? pendingSourceDirs.length + " folder nguồn · chờ quét game"
+                        : sourceFilePaths.length > 0
+                          ? sourceFilePaths.length + " file HTML · chờ quét game"
+                          : pendingSourceFiles.length > 0
+                            ? pendingSourceFiles.length + " file trong folder · chờ quét game"
+                            : "Chọn folder hoặc file HTML"}
                 </small>
               </div>
               <button
@@ -1979,9 +2107,9 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
                 <div className="scan-results-heading">
                   <div>
                     <p className="eyebrow">Kết quả quét</p>
-                    <h3>File HTML mới để cập nhật</h3>
+                    <h3>Game mới để cập nhật</h3>
                   </div>
-                  <span>{selectedGameIds.length}/{scanNewCount} file mới</span>
+                  <span>{selectedGameIds.length}/{scanNewCount} game mới</span>
                 </div>
                 <div className="scan-list">
                   {scanResult.games.map((game) => (
@@ -1995,26 +2123,26 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
                       <span className="scan-item-copy">
                         <strong>{game.title}</strong>
                         <small>
-                          {game.sourcePath} · {game.id}
+                          {game.sourceKind === "folder" ? "Folder game" : "HTML đơn"} · {game.entry} · {game.fileCount} file · {formatBytes(game.totalBytes)} · {game.sourcePath} · {game.id}
                         </small>
                       </span>
                       <span className={game.isNew ? "scan-badge new" : "scan-badge"}>
-                        {game.isNew ? "File mới" : "Đã có trong kho"}
+                        {game.isNew ? "Game mới" : "Đã có trong kho"}
                       </span>
                     </label>
                   ))}
                 </div>
                 {scanResult.skippedFiles > 0 ? (
-                  <small className="scan-note">{scanResult.skippedFiles} file không phải HTML hoặc không hợp lệ đã được bỏ qua.</small>
+                  <small className="scan-note">{scanResult.skippedFiles} mục không phải game hợp lệ đã được bỏ qua.</small>
                 ) : null}
               </div>
             ) : null}
 
             {installSummary ? (
               <div className="update-summary">
-                <strong>Đã đồng bộ {installSummary.copiedFiles} file HTML mới</strong>
+                <strong>Đã đồng bộ {installSummary.installedGames} game mới</strong>
                 <span>
-                  {installSummary.installedGames} mục đã thêm vào kho, {installSummary.skippedFiles} file bỏ qua.
+                  {installSummary.installedGames} mục đã thêm vào kho, {installSummary.skippedFiles} mục bỏ qua.
                 </span>
                 <code>{installSummary.targetDir}</code>
               </div>
