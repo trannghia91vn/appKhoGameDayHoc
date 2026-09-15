@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, HashSet},
     fs,
-    path::Path,
+    path::{Path, PathBuf},
 };
 use tauri::{AppHandle, Runtime};
 
@@ -12,6 +12,13 @@ use tauri::{AppHandle, Runtime};
 pub struct IncomingGameFile {
     pub relative_path: String,
     pub bytes: Vec<u8>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IncomingGamePath {
+    pub relative_path: String,
+    pub path: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -75,10 +82,19 @@ pub struct ClassifyGamesSummary {
     pub games: Vec<ClassifiedGame>,
 }
 
+const MAX_HTML_FILE_BYTES: u64 = 80 * 1024 * 1024;
+const MAX_HTML_SOURCE_FILES: usize = 2_000;
+
 struct HtmlGameSource {
     title: String,
     source_path: String,
     bytes: Vec<u8>,
+}
+
+struct HtmlGamePathSource {
+    title: String,
+    source_path: String,
+    path: PathBuf,
 }
 
 pub fn delete_games<R: Runtime>(
@@ -157,6 +173,45 @@ pub fn scan_games_from_files<R: Runtime>(
     })
 }
 
+pub fn scan_games_from_paths<R: Runtime>(
+    app: &AppHandle<R>,
+    files: Vec<IncomingGamePath>,
+) -> Result<ScanGamesSummary, String> {
+    if files.is_empty() {
+        return Err("Chua co file HTML nao de quet.".to_string());
+    }
+
+    let (html_files, skipped_files) = collect_html_game_paths(files);
+    if html_files.is_empty() {
+        return Err("Khong tim thay file .html hop le trong folder da chon.".to_string());
+    }
+
+    let installed_ids = catalog::list_games(app)?
+        .into_iter()
+        .map(|game| game.id)
+        .collect::<HashSet<_>>();
+
+    let games = html_files
+        .into_iter()
+        .map(|(game_id, source)| DiscoveredGame {
+            id: game_id.clone(),
+            title: source.title,
+            grade: "Tuy chon".to_string(),
+            category: "HTML".to_string(),
+            version: 1,
+            entry: "index.html".to_string(),
+            file_count: 1,
+            is_new: !installed_ids.contains(&game_id),
+            source_path: source.source_path,
+        })
+        .collect::<Vec<_>>();
+
+    Ok(ScanGamesSummary {
+        games,
+        skipped_files,
+    })
+}
+
 pub fn install_games_from_files<R: Runtime>(
     app: &AppHandle<R>,
     files: Vec<IncomingGameFile>,
@@ -199,6 +254,81 @@ pub fn install_games_from_files<R: Runtime>(
         let target_html_path = target_dir.join("index.html");
         ensure_child_path(&target_dir, &target_html_path)?;
         fs::write(&target_html_path, source.bytes)
+            .map_err(|err| format!("Khong chep duoc file HTML {game_id}: {err}"))?;
+
+        let metadata = serde_json::json!({
+            "title": source.title,
+            "grade": "Tuy chon",
+            "category": "HTML",
+            "version": 1,
+            "entry": "index.html"
+        });
+        let metadata_bytes = serde_json::to_vec_pretty(&metadata)
+            .map_err(|err| format!("Khong tao duoc metadata cho {game_id}: {err}"))?;
+        let metadata_path = target_dir.join("game.json");
+        ensure_child_path(&target_dir, &metadata_path)?;
+        fs::write(&metadata_path, metadata_bytes)
+            .map_err(|err| format!("Khong ghi duoc metadata cho {game_id}: {err}"))?;
+
+        copied_files += 1;
+        installed_game_ids.push(game_id);
+    }
+
+    if installed_game_ids.is_empty() {
+        return Err("Khong co file HTML moi nao duoc cap nhat.".to_string());
+    }
+
+    Ok(InstallGamesSummary {
+        copied_files,
+        installed_games: installed_game_ids.len(),
+        skipped_files,
+        target_dir: target_root.to_string_lossy().to_string(),
+        game_ids: installed_game_ids,
+    })
+}
+
+pub fn install_games_from_paths<R: Runtime>(
+    app: &AppHandle<R>,
+    files: Vec<IncomingGamePath>,
+    game_ids: Vec<String>,
+) -> Result<InstallGamesSummary, String> {
+    if game_ids.is_empty() {
+        return Err("Khong co file HTML moi nao de cap nhat.".to_string());
+    }
+
+    let (mut html_files, mut skipped_files) = collect_html_game_paths(files);
+    let selected_ids = game_ids.into_iter().collect::<HashSet<_>>();
+    html_files.retain(|game_id, _| selected_ids.contains(game_id));
+
+    if html_files.is_empty() {
+        return Err("Khong tim thay cac file HTML da xac nhan trong folder da chon.".to_string());
+    }
+
+    let installed_ids = catalog::list_games(app)?
+        .into_iter()
+        .map(|game| game.id)
+        .collect::<HashSet<_>>();
+    let target_root = catalog::installed_games_dir(app)?;
+    fs::create_dir_all(&target_root)
+        .map_err(|err| format!("Khong tao duoc thu muc games trong app: {err}"))?;
+
+    let mut copied_files = 0;
+    let mut installed_game_ids = Vec::new();
+
+    for (game_id, source) in html_files {
+        if installed_ids.contains(&game_id) {
+            skipped_files += 1;
+            continue;
+        }
+
+        validate_game_id(&game_id)?;
+        let target_dir = target_root.join(&game_id);
+        fs::create_dir_all(&target_dir)
+            .map_err(|err| format!("Khong tao duoc thu muc game {game_id}: {err}"))?;
+
+        let target_html_path = target_dir.join("index.html");
+        ensure_child_path(&target_dir, &target_html_path)?;
+        fs::copy(&source.path, &target_html_path)
             .map_err(|err| format!("Khong chep duoc file HTML {game_id}: {err}"))?;
 
         let metadata = serde_json::json!({
@@ -391,13 +521,22 @@ fn collect_html_game_files(
     let mut skipped_files = 0;
     let mut html_files = BTreeMap::new();
 
-    for file in files {
+    if files.len() > MAX_HTML_SOURCE_FILES {
+        skipped_files += files.len() - MAX_HTML_SOURCE_FILES;
+    }
+
+    for file in files.into_iter().take(MAX_HTML_SOURCE_FILES) {
         let Some(components) = normalize_relative_path(&file.relative_path) else {
             skipped_files += 1;
             continue;
         };
 
         if should_skip_file(&components) || !is_html_file(&components) {
+            skipped_files += 1;
+            continue;
+        }
+
+        if file.bytes.is_empty() || file.bytes.len() as u64 > MAX_HTML_FILE_BYTES {
             skipped_files += 1;
             continue;
         }
@@ -426,6 +565,68 @@ fn collect_html_game_files(
                 title: title_from_file_stem(stem),
                 source_path: components.join("/"),
                 bytes: file.bytes,
+            },
+        );
+    }
+
+    (html_files, skipped_files)
+}
+
+fn collect_html_game_paths(
+    files: Vec<IncomingGamePath>,
+) -> (BTreeMap<String, HtmlGamePathSource>, usize) {
+    let mut skipped_files = 0;
+    let mut html_files = BTreeMap::new();
+
+    if files.len() > MAX_HTML_SOURCE_FILES {
+        skipped_files += files.len() - MAX_HTML_SOURCE_FILES;
+    }
+
+    for file in files.into_iter().take(MAX_HTML_SOURCE_FILES) {
+        let Some(components) = normalize_relative_path(&file.relative_path) else {
+            skipped_files += 1;
+            continue;
+        };
+
+        if should_skip_file(&components) || !is_html_file(&components) {
+            skipped_files += 1;
+            continue;
+        }
+
+        let source_path = PathBuf::from(&file.path);
+        let Ok(metadata) = fs::metadata(&source_path) else {
+            skipped_files += 1;
+            continue;
+        };
+        if !metadata.is_file() || metadata.len() > MAX_HTML_FILE_BYTES {
+            skipped_files += 1;
+            continue;
+        }
+
+        let Some(file_name) = components.last() else {
+            skipped_files += 1;
+            continue;
+        };
+        let Some(stem) = file_stem(file_name) else {
+            skipped_files += 1;
+            continue;
+        };
+        let Some(game_id) = game_id_from_html_stem(stem) else {
+            skipped_files += 1;
+            continue;
+        };
+
+        if html_files.contains_key(&game_id) {
+            skipped_files += 1;
+            continue;
+        }
+
+        html_files.insert(
+            game_id,
+            HtmlGamePathSource {
+                title: title_from_file_stem(stem),
+                source_path: components.join("/"),
+                path: source_path,
             },
         );
     }
@@ -566,15 +767,23 @@ fn ensure_child_path(parent: &Path, child: &Path) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        best_category_match, collect_html_game_files, game_id_from_html_stem,
-        normalize_search_text, IncomingGameFile,
+        best_category_match, collect_html_game_files, collect_html_game_paths,
+        game_id_from_html_stem, normalize_search_text, IncomingGameFile, IncomingGamePath,
     };
     use crate::categories::Category;
+    use std::{fs, path::Path};
 
     fn incoming(relative_path: &str) -> IncomingGameFile {
         IncomingGameFile {
             relative_path: relative_path.to_string(),
             bytes: vec![1, 2, 3],
+        }
+    }
+
+    fn incoming_path(relative_path: &str, path: &Path) -> IncomingGamePath {
+        IncomingGamePath {
+            relative_path: relative_path.to_string(),
+            path: path.to_string_lossy().to_string(),
         }
     }
 
@@ -590,6 +799,29 @@ mod tests {
         assert!(games.contains_key("tieng-viet-5"));
         assert_eq!(games.len(), 2);
         assert_eq!(skipped, 1);
+    }
+
+    #[test]
+    fn collects_html_paths_without_loading_bytes() {
+        let temp_root =
+            std::env::temp_dir().join(format!("yeutre-install-test-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&temp_root);
+        fs::create_dir_all(&temp_root).expect("create temp dir");
+        let html_path = temp_root.join("Bai Tap.html");
+        fs::write(&html_path, b"<html></html>").expect("write html");
+        let text_path = temp_root.join("readme.txt");
+        fs::write(&text_path, b"skip").expect("write text");
+
+        let (games, skipped) = collect_html_game_paths(vec![
+            incoming_path("usb/Bai Tap.html", &html_path),
+            incoming_path("usb/readme.txt", &text_path),
+        ]);
+
+        assert!(games.contains_key("bai-tap"));
+        assert_eq!(games.len(), 1);
+        assert_eq!(skipped, 1);
+
+        fs::remove_dir_all(&temp_root).expect("cleanup temp dir");
     }
 
     #[test]

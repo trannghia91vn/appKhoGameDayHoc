@@ -14,10 +14,11 @@
       {
         "label": "main",
         "title": "YeuTre Game Launcher",
-        "width": 1100,
-        "height": 760,
+        "width": 1360,
+        "height": 900,
         "minWidth": 860,
-        "minHeight": 620
+        "minHeight": 760,
+        "center": true
       }
     ],
     "security": {

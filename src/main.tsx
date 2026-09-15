@@ -19,12 +19,24 @@ type InstallGameFile = {
   bytes: number[];
 };
 
+type InstallGamePath = {
+  relativePath: string;
+  path: string;
+};
+
 type InstallGamesSummary = {
   copiedFiles: number;
   installedGames: number;
   skippedFiles: number;
   targetDir: string;
   gameIds: string[];
+};
+
+type ExportGamesArchiveSummary = {
+  archivePath: string;
+  exportedGames: number;
+  exportedFiles: number;
+  archiveBytes: number;
 };
 
 type DeleteGamesSummary = {
@@ -109,6 +121,32 @@ type GameRuntimeMessage = {
 const isTauriRuntime = "__TAURI_INTERNALS__" in window;
 const ADMIN_PASSWORD_STORAGE_KEY = "yeutre.gameLauncher.adminPasswordHash.v1";
 const ADMIN_PASSWORD_SALT = "yeutre-game-launcher-admin-v1";
+const MAX_BROWSER_SCAN_FILES = 2_000;
+const MAX_BROWSER_HTML_FILE_BYTES = 80 * 1024 * 1024;
+
+type TauriInputFile = File & {
+  path?: string;
+};
+
+function fileRelativePath(file: File) {
+  return file.webkitRelativePath || file.name;
+}
+
+function fileSystemPath(file: File) {
+  return (file as TauriInputFile).path?.trim() || null;
+}
+
+function htmlSourcePathFiles(files: File[]) {
+  const htmlFiles = files.filter((file) => isHtmlFileName(file.name));
+  const sourceFiles = htmlFiles
+    .map((file) => {
+      const path = fileSystemPath(file);
+      return path ? { relativePath: fileRelativePath(file), path } : null;
+    })
+    .filter((file): file is InstallGamePath => file !== null);
+
+  return sourceFiles.length === htmlFiles.length ? sourceFiles : [];
+}
 
 type LoginScreenProps = {
   onLogin: (role: AccountRole) => void;
@@ -130,6 +168,23 @@ async function hashAdminPassword(password: string) {
   }
 
   return "plain:" + encodeURIComponent(input);
+}
+
+function formatBytes(bytes: number) {
+  if (!Number.isFinite(bytes) || bytes <= 0) {
+    return "0 B";
+  }
+
+  const units = ["B", "KB", "MB", "GB"];
+  let value = bytes;
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+
+  const formatted = value >= 10 || unitIndex === 0 ? value.toFixed(0) : value.toFixed(1);
+  return formatted + " " + units[unitIndex];
 }
 
 function errorMessage(error: unknown) {
@@ -556,18 +611,24 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
   const [debugEntries, setDebugEntries] = useState<DebugEntry[]>([]);
   const [pendingSourceFiles, setPendingSourceFiles] = useState<File[]>([]);
   const [sourceFiles, setSourceFiles] = useState<InstallGameFile[]>([]);
+  const [sourceFilePaths, setSourceFilePaths] = useState<InstallGamePath[]>([]);
   const [selectedSourceName, setSelectedSourceName] = useState<string | null>(null);
   const [scanResult, setScanResult] = useState<ScanGamesSummary | null>(null);
   const [selectedGameIds, setSelectedGameIds] = useState<string[]>([]);
   const [installSummary, setInstallSummary] = useState<InstallGamesSummary | null>(null);
+  const [exportSummary, setExportSummary] = useState<ExportGamesArchiveSummary | null>(null);
   const [classificationSummary, setClassificationSummary] = useState<ClassifyGamesSummary | null>(null);
   const [isScanningGames, setIsScanningGames] = useState(false);
   const [isUpdatingGames, setIsUpdatingGames] = useState(false);
+  const [isExportingGames, setIsExportingGames] = useState(false);
   const [isClassifyingGames, setIsClassifyingGames] = useState(false);
   const [newAdminPassword, setNewAdminPassword] = useState("");
+  const [exportAdminPassword, setExportAdminPassword] = useState("");
   const [isChangingPassword, setIsChangingPassword] = useState(false);
   const folderInputRef = useRef<HTMLInputElement | null>(null);
   const recentDeepLinkSelections = useRef(new Map<string, number>());
+  const playHealthTimeoutRef = useRef<number | null>(null);
+  const playRequestSerialRef = useRef(0);
   const isAdmin = accountRole === "admin";
 
 
@@ -855,13 +916,22 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
     setFocusedGameId(gameId);
     setActivePage("library");
     setError(null);
+    const requestSerial = playRequestSerialRef.current + 1;
+    playRequestSerialRef.current = requestSerial;
+    if (playHealthTimeoutRef.current !== null) {
+      window.clearTimeout(playHealthTimeoutRef.current);
+    }
     window.setTimeout(() => setBusyGameId((current) => current === gameId ? null : current), 180);
-    window.setTimeout(() => {
+    playHealthTimeoutRef.current = window.setTimeout(() => {
+      if (playRequestSerialRef.current !== requestSerial) {
+        return;
+      }
       appendDebug("play health check", {
         gameId: game.id,
         iframeUrl,
         hint: "Nếu khung vẫn trắng, copy log chẩn đoán sau dòng này.",
       });
+      playHealthTimeoutRef.current = null;
     }, 2500);
     setStatus("Đã mở bài tập trong khung xem: " + game.title);
   }, [appendDebug, games]);
@@ -1064,6 +1134,14 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
     };
   }, [appendDebug]);
 
+  useEffect(() => {
+    return () => {
+      if (playHealthTimeoutRef.current !== null) {
+        window.clearTimeout(playHealthTimeoutRef.current);
+      }
+    };
+  }, []);
+
   const chooseSourceFolder = useCallback(() => {
     if (!isAdmin) {
       setError("Tài khoản User không được cập nhật kho game.");
@@ -1095,6 +1173,7 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
     setScanResult(null);
     setSelectedGameIds([]);
     setSourceFiles([]);
+    setSourceFilePaths([]);
     setPendingSourceFiles(files);
     setError(null);
 
@@ -1104,13 +1183,18 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
       return;
     }
 
-    const firstRelativePath = files[0].webkitRelativePath || files[0].name;
+    const firstRelativePath = fileRelativePath(files[0]);
     const rootName = firstRelativePath.split("/")[0] || "Thư mục đã chọn";
-    const htmlCount = files.filter((file) => isHtmlFileName(file.name)).length;
+    const htmlFiles = files.filter((file) => isHtmlFileName(file.name));
+    const oversizedHtmlCount = htmlFiles.filter((file) => file.size > MAX_BROWSER_HTML_FILE_BYTES).length;
+    const pathModeReady = isTauriRuntime && htmlFiles.length > 0 && htmlSourcePathFiles(files).length === htmlFiles.length;
     setSelectedSourceName(rootName);
     setStatus(
-      "Đã chọn " + rootName + " với " + htmlCount +
-        " file HTML. Bấm Quét HTML để tìm file mới.",
+      "Đã chọn " + rootName + " với " + htmlFiles.length +
+        " file HTML" +
+        (pathModeReady ? " (chế độ nhẹ)." : ".") +
+        (oversizedHtmlCount > 0 ? " " + oversizedHtmlCount + " file quá lớn sẽ bị bỏ qua." : "") +
+        " Bấm Quét HTML để tìm file mới.",
     );
   }, [isAdmin]);
 
@@ -1135,19 +1219,40 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
       setError(null);
       setStatus("Đang phân tích file HTML trong folder đã chọn...");
 
-      const incomingFiles: InstallGameFile[] = await Promise.all(
-        pendingSourceFiles.map(async (file) => ({
-          relativePath: file.webkitRelativePath || file.name,
-          bytes: Array.from(new Uint8Array(await file.arrayBuffer())),
-        })),
-      );
+      const pathFiles = isTauriRuntime ? htmlSourcePathFiles(pendingSourceFiles) : [];
+      const canUsePathMode = isTauriRuntime && pathFiles.length > 0;
+      let incomingFiles: InstallGameFile[] = [];
 
-      const result = isTauriRuntime
-        ? await invoke<ScanGamesSummary>("scan_games_from_files", { files: incomingFiles })
-        : buildPreviewScanResult(pendingSourceFiles, games);
+      if (!canUsePathMode && pendingSourceFiles.length > MAX_BROWSER_SCAN_FILES) {
+        throw new Error("Folder có quá nhiều file để quét bằng chế độ browser. Hãy mở bằng app Tauri để dùng chế độ nhẹ.");
+      }
+
+      const result = canUsePathMode
+        ? await invoke<ScanGamesSummary>("scan_games_from_paths", { files: pathFiles })
+        : isTauriRuntime
+          ? await invoke<ScanGamesSummary>("scan_games_from_files", {
+            files: incomingFiles = await Promise.all(
+              pendingSourceFiles.map(async (file) => {
+                if (file.size > MAX_BROWSER_HTML_FILE_BYTES) {
+                  return { relativePath: fileRelativePath(file), bytes: [] };
+                }
+                return {
+                  relativePath: fileRelativePath(file),
+                  bytes: Array.from(new Uint8Array(await file.arrayBuffer())),
+                };
+              }),
+            ),
+          })
+          : buildPreviewScanResult(pendingSourceFiles, games);
       const newGameIds = result.games.filter((game) => game.isNew).map((game) => game.id);
 
-      setSourceFiles(incomingFiles);
+      setSourceFilePaths(canUsePathMode ? pathFiles : []);
+      setSourceFiles(canUsePathMode ? [] : incomingFiles);
+      appendDebug("scan completed", {
+        mode: canUsePathMode ? "paths" : "bytes",
+        htmlFiles: result.games.length,
+        skippedFiles: result.skippedFiles,
+      });
       setScanResult(result);
       setSelectedGameIds(newGameIds);
       setStatus(
@@ -1160,7 +1265,7 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
     } finally {
       setIsScanningGames(false);
     }
-  }, [games, pendingSourceFiles]);
+  }, [appendDebug, games, pendingSourceFiles]);
 
   const toggleGameSelection = useCallback((gameId: string) => {
     setSelectedGameIds((current) =>
@@ -1169,7 +1274,7 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
   }, []);
 
   const updateGamesFromSelectedFolder = useCallback(async () => {
-    if (sourceFiles.length === 0 || !scanResult) {
+    if ((sourceFiles.length === 0 && sourceFilePaths.length === 0) || !scanResult) {
       setError("Bạn cần bấm Quét HTML trước khi xác nhận cập nhật.");
       setStatus("Chưa có kết quả quét để cập nhật.");
       return;
@@ -1191,10 +1296,15 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
       setStatus("Đang đồng bộ các file HTML mới đã xác nhận...");
 
       const summary = isTauriRuntime
-        ? await invoke<InstallGamesSummary>("install_games_from_files", {
-          files: sourceFiles,
-          gameIds: newSelectedGameIds,
-        })
+        ? sourceFilePaths.length > 0
+          ? await invoke<InstallGamesSummary>("install_games_from_paths", {
+            files: sourceFilePaths,
+            gameIds: newSelectedGameIds,
+          })
+          : await invoke<InstallGamesSummary>("install_games_from_files", {
+            files: sourceFiles,
+            gameIds: newSelectedGameIds,
+          })
         : {
           copiedFiles: newSelectedGameIds.length,
           installedGames: newSelectedGameIds.length,
@@ -1213,6 +1323,7 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
       setInstallSummary(summary);
       setPendingSourceFiles([]);
       setSourceFiles([]);
+      setSourceFilePaths([]);
       setScanResult(null);
       setSelectedGameIds([]);
       setSelectedSourceName(null);
@@ -1230,7 +1341,70 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
     } finally {
       setIsUpdatingGames(false);
     }
-  }, [isAdmin, loadGames, scanResult, selectedGameIds, sourceFiles]);
+  }, [isAdmin, loadGames, scanResult, selectedGameIds, sourceFilePaths, sourceFiles]);
+
+  const exportGamesArchive = useCallback(async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!isAdmin) {
+      setError("Tài khoản User không được xuất kho game.");
+      setStatus("Cài đặt chỉ dành cho Admin.");
+      return;
+    }
+
+    const installedCount = games.filter((game) => game.isInstalled !== false).length;
+    if (installedCount === 0) {
+      setError("Chưa có game nào trong kho để xuất.");
+      setStatus("Kho game đang trống.");
+      return;
+    }
+
+    if (!isTauriRuntime) {
+      setError("Tính năng xuất file zip chỉ chạy trong app Tauri.");
+      setStatus("Mở app bằng npm run tauri dev để xuất kho game.");
+      return;
+    }
+
+    const savedHash = window.localStorage.getItem(ADMIN_PASSWORD_STORAGE_KEY);
+    if (!savedHash) {
+      setError("Chưa thiết lập password admin.");
+      setStatus("Không thể xác thực quyền xuất kho game.");
+      return;
+    }
+
+    if (!exportAdminPassword) {
+      setError("Hãy nhập password admin để xác nhận xuất kho game.");
+      setStatus("Cần xác nhận password admin trước khi xuất zip.");
+      return;
+    }
+
+    if (await hashAdminPassword(exportAdminPassword) !== savedHash) {
+      setError("Password admin không đúng.");
+      setStatus("Không thể xuất kho game vì xác thực thất bại.");
+      return;
+    }
+
+    try {
+      setIsExportingGames(true);
+      setError(null);
+      setExportSummary(null);
+      setStatus("Đang nén toàn bộ kho game thành file zip...");
+
+      const summary = await invoke<ExportGamesArchiveSummary>("export_games_archive");
+      setExportSummary(summary);
+      setExportAdminPassword("");
+      setStatus(
+        "Đã xuất " + summary.exportedGames +
+          " game thành file zip: " + summary.archivePath,
+      );
+    } catch (err) {
+      const message = errorMessage(err);
+      console.error("[YeuTre debug] export games archive failed", err);
+      setError(message);
+      setStatus("Không thể xuất kho game thành file zip.");
+    } finally {
+      setIsExportingGames(false);
+    }
+  }, [exportAdminPassword, games, isAdmin]);
 
   useEffect(() => {
     void loadGames();
@@ -1687,11 +1861,7 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
                       <span className="game-rank">{String(index + 1).padStart(2, "0")}</span>
                       <span className="game-title-block">
                         <strong>{game.title}</strong>
-                        <small>{game.id}</small>
                       </span>
-                      <span>{game.category}</span>
-                      <span>{game.grade}</span>
-                      <span>v{game.version}</span>
                     </div>
                   );
                 })
@@ -1725,14 +1895,6 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
                     <strong>ID</strong>
                     {focusedGame.id}
                   </span>
-                  <span>
-                    <strong>Entry</strong>
-                    {focusedGame.entry}
-                  </span>
-                  <span>
-                    <strong>Phiên bản</strong>
-                    v{focusedGame.version}
-                  </span>
                 </div>
                 <div className="deep-link-panel">
                   <div className="deep-link-heading">
@@ -1759,40 +1921,6 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
           <div className="section-heading">
             <h2>Cài đặt</h2>
             <p>Thiết lập và cập nhật nguồn games cho app.</p>
-          </div>
-
-          <div className="settings-panel password-panel">
-            <div>
-              <p className="eyebrow">Tài khoản Admin</p>
-              <h3>Đổi password</h3>
-              <p className="settings-copy">
-                Nhập password mới rồi lưu lại. App không yêu cầu password cũ cho thao tác này.
-              </p>
-            </div>
-
-            <form className="password-form" onSubmit={(event) => void changeAdminPassword(event)}>
-              <label className="password-field">
-                <span>Password mới</span>
-                <input
-                  autoComplete="new-password"
-                  minLength={4}
-                  onChange={(event) => setNewAdminPassword(event.target.value)}
-                  placeholder="Nhập password admin mới"
-                  required
-                  type="password"
-                  value={newAdminPassword}
-                />
-              </label>
-              <div className="password-form-actions">
-                <button
-                  className="category-save-button"
-                  disabled={isChangingPassword || newAdminPassword.trim().length < 4}
-                  type="submit"
-                >
-                  {isChangingPassword ? "Đang lưu..." : "Đổi password"}
-                </button>
-              </div>
-            </form>
           </div>
 
           <div className="settings-panel">
@@ -2029,6 +2157,86 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
             ) : null}
           </div>
 
+          <div className="settings-panel archive-panel">
+            <div>
+              <p className="eyebrow">Xuất kho game</p>
+              <h3>Lưu toàn bộ kho game thành file zip</h3>
+              <p className="settings-copy">
+                Tạo một file <code>.zip</code> chứa toàn bộ games đã cài và file categories nếu có. Nhập lại password admin để xác nhận trước khi xuất.
+              </p>
+            </div>
+
+            <form className="archive-form" onSubmit={(event) => void exportGamesArchive(event)}>
+              <label className="archive-field">
+                <span>Password admin</span>
+                <input
+                  autoComplete="current-password"
+                  onChange={(event) => setExportAdminPassword(event.target.value)}
+                  placeholder="Nhập password admin để xuất zip"
+                  required
+                  type="password"
+                  value={exportAdminPassword}
+                />
+              </label>
+              <button
+                className="archive-button"
+                disabled={isExportingGames || installedGameCount === 0 || exportAdminPassword.length === 0}
+                type="submit"
+              >
+                {isExportingGames ? "Đang xuất zip..." : "Xuất kho game"}
+              </button>
+              <div className="archive-status">
+                <span>Kho hiện tại</span>
+                <strong>{installedGameCount} game đã cài</strong>
+                <small>File zip được tạo trong Downloads để lưu trữ khi cần.</small>
+              </div>
+            </form>
+
+            {exportSummary ? (
+              <div className="update-summary archive-summary">
+                <strong>Đã xuất {exportSummary.exportedGames} game</strong>
+                <span>
+                  {exportSummary.exportedFiles} file · {formatBytes(exportSummary.archiveBytes)}
+                </span>
+                <code>{exportSummary.archivePath}</code>
+              </div>
+            ) : null}
+          </div>
+
+          <div className="settings-panel password-panel">
+            <div>
+              <p className="eyebrow">Tài khoản Admin</p>
+              <h3>Đổi password</h3>
+              <p className="settings-copy">
+                Nhập password mới rồi lưu lại. App không yêu cầu password cũ cho thao tác này.
+              </p>
+            </div>
+
+            <form className="password-form" onSubmit={(event) => void changeAdminPassword(event)}>
+              <label className="password-field">
+                <span>Password mới</span>
+                <input
+                  autoComplete="new-password"
+                  minLength={4}
+                  onChange={(event) => setNewAdminPassword(event.target.value)}
+                  placeholder="Nhập password admin mới"
+                  required
+                  type="password"
+                  value={newAdminPassword}
+                />
+              </label>
+              <div className="password-form-actions">
+                <button
+                  className="category-save-button"
+                  disabled={isChangingPassword || newAdminPassword.trim().length < 4}
+                  type="submit"
+                >
+                  {isChangingPassword ? "Đang lưu..." : "Đổi password"}
+                </button>
+              </div>
+            </form>
+          </div>
+
         </section>
       )}
 
@@ -2044,6 +2252,7 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
         <div className={launchedGame ? "exercise-frame-shell active" : "exercise-frame-shell"}>
           {launchedGame ? (
             <iframe
+              key={playerSrc ?? launchedGame.id}
               className="exercise-frame"
               onError={() => {
                 appendDebug("game iframe error", { gameId: launchedGame.id, src: playerSrc });

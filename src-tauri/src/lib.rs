@@ -7,14 +7,15 @@ mod protocol;
 use categories::{Category, CategoryInput};
 use games::{
     catalog::GameManifest,
+    export::ExportGamesArchiveSummary,
     install::{
-        ClassifyGamesSummary, DeleteGamesSummary, IncomingGameFile, InstallGamesSummary,
-        ScanGamesSummary,
+        ClassifyGamesSummary, DeleteGamesSummary, IncomingGameFile, IncomingGamePath,
+        InstallGamesSummary, ScanGamesSummary,
     },
 };
 use serde::Serialize;
 use std::sync::Mutex;
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, Position, Size};
 use tauri_plugin_deep_link::DeepLinkExt;
 
 #[derive(Clone, Serialize)]
@@ -30,6 +31,64 @@ struct DeepLinkStatus {
 #[derive(Default)]
 struct DeepLinkState {
     latest_status: Mutex<Option<DeepLinkStatus>>,
+}
+
+const DEFAULT_WINDOW_WIDTH: u32 = 1360;
+const MIN_WINDOW_WIDTH: u32 = 860;
+
+fn fit_main_window_to_screen_height(app: &AppHandle) {
+    let Some(window) = app.get_webview_window("main") else {
+        log::warn!("main window not found while fitting to screen height");
+        return;
+    };
+
+    let monitor = window
+        .current_monitor()
+        .ok()
+        .flatten()
+        .or_else(|| window.primary_monitor().ok().flatten());
+
+    let Some(monitor) = monitor else {
+        log::warn!("no monitor found while fitting main window to screen height");
+        return;
+    };
+
+    let work_area = *monitor.work_area();
+    let target_height = work_area.size.height;
+    let screen_width = work_area.size.width;
+    if target_height == 0 || screen_width == 0 {
+        log::warn!("invalid monitor work area while fitting main window");
+        return;
+    }
+
+    let min_width = MIN_WINDOW_WIDTH.min(screen_width);
+    let current_width = window
+        .outer_size()
+        .map(|size| size.width)
+        .unwrap_or(DEFAULT_WINDOW_WIDTH)
+        .clamp(min_width, screen_width);
+    let centered_x = work_area.position.x + ((screen_width - current_width) / 2) as i32;
+
+    if let Err(err) = window.set_min_size(Some(Size::Physical(PhysicalSize::new(
+        min_width,
+        target_height,
+    )))) {
+        log::warn!("failed to set main window minimum screen height: {err}");
+    }
+
+    if let Err(err) = window.set_size(Size::Physical(PhysicalSize::new(
+        current_width,
+        target_height,
+    ))) {
+        log::warn!("failed to set main window screen height: {err}");
+    }
+
+    if let Err(err) = window.set_position(Position::Physical(PhysicalPosition::new(
+        centered_x,
+        work_area.position.y,
+    ))) {
+        log::warn!("failed to align main window to monitor work area: {err}");
+    }
 }
 
 fn focus_main_window(app: &AppHandle) {
@@ -242,12 +301,53 @@ fn scan_games_from_files(
 }
 
 #[tauri::command]
+fn scan_games_from_paths(
+    app: AppHandle,
+    files: Vec<IncomingGamePath>,
+) -> Result<ScanGamesSummary, String> {
+    games::install::scan_games_from_paths(&app, files)
+}
+
+#[tauri::command]
 fn install_games_from_files(
     app: AppHandle,
     files: Vec<IncomingGameFile>,
     game_ids: Vec<String>,
 ) -> Result<InstallGamesSummary, String> {
     games::install::install_games_from_files(&app, files, game_ids)
+}
+
+#[tauri::command]
+fn install_games_from_paths(
+    app: AppHandle,
+    files: Vec<IncomingGamePath>,
+    game_ids: Vec<String>,
+) -> Result<InstallGamesSummary, String> {
+    games::install::install_games_from_paths(&app, files, game_ids)
+}
+
+#[tauri::command]
+fn export_games_archive(app: AppHandle) -> Result<ExportGamesArchiveSummary, String> {
+    logging::event("games_export_requested", &[]);
+
+    match games::export::export_games_archive(&app) {
+        Ok(summary) => {
+            let exported_games = summary.exported_games.to_string();
+            let archive_path = summary.archive_path.clone();
+            logging::event(
+                "games_export_completed",
+                &[
+                    ("exported_games", &exported_games),
+                    ("archive_path", &archive_path),
+                ],
+            );
+            Ok(summary)
+        }
+        Err(message) => {
+            logging::event("games_export_failed", &[("reason", message.as_str())]);
+            Err(message)
+        }
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -275,6 +375,8 @@ pub fn run() {
         .plugin(tauri_plugin_deep_link::init())
         .setup(|app| {
             let app_handle = app.handle().clone();
+            fit_main_window_to_screen_height(&app_handle);
+
             app.deep_link().on_open_url(move |event| {
                 for url in event.urls() {
                     let url = url.to_string();
@@ -312,7 +414,10 @@ pub fn run() {
             delete_category,
             classify_games_by_categories,
             scan_games_from_files,
-            install_games_from_files
+            scan_games_from_paths,
+            install_games_from_files,
+            install_games_from_paths,
+            export_games_archive
         ])
         .run(tauri::generate_context!())
         .expect("error while running YeuTre Game Launcher");
