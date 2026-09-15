@@ -1,0 +1,30 @@
+[package]
+name = "yeutre-game-launcher"
+version = "0.1.0"
+description = "PoC desktop launcher for YeuTre local HTML games"
+authors = ["YeuTre"]
+edition = "2021"
+
+[lib]
+name = "yeutre_game_launcher_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "yeutre-game-launcher"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+http = "1"
+log = "0.4"
+mime_guess = "2"
+percent-encoding = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri = { version = "2", features = [] }
+tauri-plugin-deep-link = "2"
+tauri-plugin-log = "2"
+tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
+url = "2"
