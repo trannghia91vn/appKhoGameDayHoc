@@ -55,12 +55,16 @@ React hien khung bai tap ben phai voi ty le 7/10 man hinh. Khi user bam `Choi ng
 - Validate resource path chong traversal.
 - Lay bytes tu `games::catalog::read_resource`.
 - Tra MIME bang `mime_guess`.
+- Inject runtime shim vao HTML va cache ban HTML da inject trong memory de mo lai game nhanh hon.
+- Tra cache header dai han cho asset khong phai HTML; HTML giu `no-cache` de CSP/shim luon dung.
 
 ## Catalog hien tai
 
 File: `src-tauri/src/games/catalog.rs`.
 
 Catalog hien nay chi gom games da cai trong app data (`appData/games/<game-id>`). Game da cai co the co `game.json`; neu khong co, app dung title suy ra tu folder, category `Game`, grade `Tuy chon`, version `1`, entry `index.html`. Moi manifest co `isInstalled = true` vi app khong con game bundle mau trong catalog.
+
+P2 them cache runtime tai `<app-data>/catalog.json`. `list_games` uu tien doc cache, verify nhanh so folder game va entry ton tai, roi chi fallback scan filesystem khi cache thieu/hong/lẹch. Sau install/delete/classify, backend rebuild cache de lan mo app tiep theo khong phai doc tung `game.json`.
 
 ## Bao mat va tin cay
 
@@ -75,12 +79,18 @@ Cac guard quan trong:
 
 ## Huong mo rong sau PoC
 
-Neu catalog lon hon:
+P2 da them cac toi uu dau tien cho kho lon:
 
-- Uu tien mot manifest co cau truc, vi du JSON/TOML build-time hoac runtime local database.
-- Van giu mot ham lookup tap trung cho manifest.
-- Van giu protocol handler la noi validate cuoi cung truoc khi tra bytes.
-- Neu game co nhieu asset, can mapping resource ro rang thay vi noi chuoi path doc filesystem truc tiep tu input.
+- `catalog.json` runtime cache de tang toc `list_games`.
+- Virtualized rendering trong React khi danh sach game lon, tranh render hang tram row cung luc.
+- HTML shim cache va cache headers trong `ytasset` protocol.
+- Export zip phat event `game-export-progress` de UI cap nhat so file dang nen.
+
+Huong tiep theo neu kho cuc lon:
+
+- Chuyen scan/install thanh background job co cancel rieng.
+- Luu catalog vao local database neu can query/phancap lon hon JSON.
+- Them import/export progress chi tiet theo byte va game.
 
 ## Cap nhat games tu Cài đặt
 

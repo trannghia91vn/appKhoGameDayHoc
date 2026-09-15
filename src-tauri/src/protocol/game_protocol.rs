@@ -1,6 +1,10 @@
 use crate::{deep_link::parser::validate_game_id, games::catalog, logging, protocol::mime};
 use http::{header, Request, Response, StatusCode};
 use percent_encoding::percent_decode_str;
+use std::{
+    collections::HashMap,
+    sync::{Mutex, OnceLock},
+};
 use tauri::{AppHandle, Runtime};
 
 pub fn response_for_request<R: Runtime>(
@@ -74,17 +78,19 @@ where
                 "Game resource was not found.".to_string(),
             )
         })?;
-    let bytes = maybe_inject_game_runtime_shims(resource_path, bytes);
+    let bytes = maybe_inject_game_runtime_shims(game_id, resource_path, bytes);
 
     let mut response_builder = Response::builder()
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, mime::content_type(resource_path));
 
     if is_html_resource(resource_path) {
-        response_builder = response_builder.header(
+        response_builder = response_builder.header("Cache-Control", "no-cache").header(
             "Content-Security-Policy",
             "default-src 'self' data: blob: ytasset:; connect-src 'self'; img-src 'self' data: blob: ytasset:; media-src 'self' data: blob: ytasset:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; object-src 'none'",
         );
+    } else {
+        response_builder = response_builder.header("Cache-Control", "public, max-age=31536000, immutable");
     }
 
     response_builder.body(bytes).map_err(|err| {
@@ -99,9 +105,20 @@ fn is_html_resource(resource_path: &str) -> bool {
     resource_path.ends_with(".html") || resource_path.ends_with(".htm")
 }
 
-fn maybe_inject_game_runtime_shims(resource_path: &str, bytes: Vec<u8>) -> Vec<u8> {
+static HTML_SHIM_CACHE: OnceLock<Mutex<HashMap<String, Vec<u8>>>> = OnceLock::new();
+const HTML_SHIM_CACHE_MAX_ENTRIES: usize = 128;
+
+fn maybe_inject_game_runtime_shims(game_id: &str, resource_path: &str, bytes: Vec<u8>) -> Vec<u8> {
     if !is_html_resource(resource_path) {
         return bytes;
+    }
+
+    let cache_key = format!("{game_id}/{resource_path}/{}", bytes.len());
+    let cache = HTML_SHIM_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Ok(cache) = cache.lock() {
+        if let Some(cached) = cache.get(&cache_key) {
+            return cached.clone();
+        }
     }
 
     let html = match String::from_utf8(bytes) {
@@ -307,23 +324,30 @@ fn maybe_inject_game_runtime_shims(resource_path: &str, bytes: Vec<u8>) -> Vec<u
 })();
 </script>"#;
 
-    if let Some(index) = html.find("</head>") {
+    let injected = if let Some(index) = html.find("</head>") {
         let mut output = String::with_capacity(html.len() + shim.len());
         output.push_str(&html[..index]);
         output.push_str(shim);
         output.push_str(&html[index..]);
-        return output.into_bytes();
-    }
-
-    if let Some(index) = html.find("<script") {
+        output.into_bytes()
+    } else if let Some(index) = html.find("<script") {
         let mut output = String::with_capacity(html.len() + shim.len());
         output.push_str(&html[..index]);
         output.push_str(shim);
         output.push_str(&html[index..]);
-        return output.into_bytes();
+        output.into_bytes()
+    } else {
+        html.into_bytes()
+    };
+
+    if let Ok(mut cache) = cache.lock() {
+        if cache.len() >= HTML_SHIM_CACHE_MAX_ENTRIES {
+            cache.clear();
+        }
+        cache.insert(cache_key, injected.clone());
     }
 
-    html.into_bytes()
+    injected
 }
 
 fn validate_resource_path(resource_path: &str) -> Result<(), (StatusCode, String)> {

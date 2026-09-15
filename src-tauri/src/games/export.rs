@@ -6,7 +6,7 @@ use std::{
     path::{Path, PathBuf},
     time::{SystemTime, UNIX_EPOCH},
 };
-use tauri::{AppHandle, Manager, Runtime};
+use tauri::{AppHandle, Emitter, Manager, Runtime};
 use zip::{write::SimpleFileOptions, ZipWriter};
 
 #[derive(Debug, Serialize)]
@@ -16,6 +16,13 @@ pub struct ExportGamesArchiveSummary {
     pub exported_games: usize,
     pub exported_files: usize,
     pub archive_bytes: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ExportGamesArchiveProgress {
+    exported_files: usize,
+    current_path: String,
 }
 
 pub fn export_games_archive<R: Runtime>(
@@ -45,9 +52,11 @@ pub fn export_games_archive<R: Runtime>(
     let options = SimpleFileOptions::default();
     let mut exported_files = 0;
 
+    emit_export_progress(app, exported_files, "Bắt đầu xuất kho game");
     zip.add_directory("games/", options)
         .map_err(|err| format!("Khong tao duoc thu muc games trong zip: {err}"))?;
     add_directory_to_zip(
+        app,
         &mut zip,
         &games_dir,
         &games_dir,
@@ -64,6 +73,7 @@ pub fn export_games_archive<R: Runtime>(
     if categories_path.is_file() {
         add_file_to_zip(&mut zip, &categories_path, "categories.json", options)?;
         exported_files += 1;
+        emit_export_progress(app, exported_files, "categories.json");
     }
 
     zip.finish()
@@ -73,12 +83,24 @@ pub fn export_games_archive<R: Runtime>(
         .map_err(|err| format!("Khong doc duoc thong tin file zip da xuat: {err}"))?
         .len();
 
+    emit_export_progress(app, exported_files, "Hoàn tất xuất kho game");
+
     Ok(ExportGamesArchiveSummary {
         archive_path: archive_path.to_string_lossy().to_string(),
         exported_games: games.len(),
         exported_files,
         archive_bytes,
     })
+}
+
+fn emit_export_progress<R: Runtime>(app: &AppHandle<R>, exported_files: usize, current_path: &str) {
+    let _ = app.emit(
+        "game-export-progress",
+        ExportGamesArchiveProgress {
+            exported_files,
+            current_path: current_path.to_string(),
+        },
+    );
 }
 
 fn unique_archive_path(output_dir: &Path) -> PathBuf {
@@ -89,7 +111,8 @@ fn unique_archive_path(output_dir: &Path) -> PathBuf {
     output_dir.join(format!("yeutre-game-kho-{timestamp}.zip"))
 }
 
-fn add_directory_to_zip<W: Write + std::io::Seek>(
+fn add_directory_to_zip<R: Runtime, W: Write + std::io::Seek>(
+    app: &AppHandle<R>,
     zip: &mut ZipWriter<W>,
     root_dir: &Path,
     current_dir: &Path,
@@ -124,10 +147,13 @@ fn add_directory_to_zip<W: Write + std::io::Seek>(
         if file_type.is_dir() {
             zip.add_directory(format!("{archive_name}/"), options)
                 .map_err(|err| format!("Khong them duoc thu muc vao zip {archive_name}: {err}"))?;
-            add_directory_to_zip(zip, root_dir, &path, archive_root, options, exported_files)?;
+            add_directory_to_zip(app, zip, root_dir, &path, archive_root, options, exported_files)?;
         } else if file_type.is_file() {
             add_file_to_zip(zip, &path, &archive_name, options)?;
             *exported_files += 1;
+            if *exported_files == 1 || *exported_files % 25 == 0 {
+                emit_export_progress(app, *exported_files, &archive_name);
+            }
         }
     }
 

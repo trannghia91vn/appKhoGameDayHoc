@@ -165,6 +165,8 @@ pub fn delete_games<R: Runtime>(
         return Err("Khong co game da cai nao trong danh sach de xoa.".to_string());
     }
 
+    catalog::rebuild_catalog_cache(app)?;
+
     Ok(DeleteGamesSummary {
         deleted_games: deleted_ids.len(),
         skipped_games,
@@ -320,6 +322,8 @@ pub fn install_games_from_files<R: Runtime>(
         return Err("Khong co file HTML moi nao duoc cap nhat.".to_string());
     }
 
+    catalog::rebuild_catalog_cache(app)?;
+
     Ok(InstallGamesSummary {
         copied_files,
         installed_games: installed_game_ids.len(),
@@ -394,6 +398,8 @@ pub fn install_games_from_paths<R: Runtime>(
     if installed_game_ids.is_empty() {
         return Err("Khong co file HTML moi nao duoc cap nhat.".to_string());
     }
+
+    catalog::rebuild_catalog_cache(app)?;
 
     Ok(InstallGamesSummary {
         copied_files,
@@ -518,6 +524,8 @@ pub fn install_game_sources<R: Runtime>(
         return Err("Khong co game moi nao duoc cap nhat.".to_string());
     }
 
+    catalog::rebuild_catalog_cache(app)?;
+
     Ok(InstallGamesSummary {
         copied_files,
         installed_games: installed_game_ids.len(),
@@ -601,14 +609,20 @@ pub fn classify_games_by_categories<R: Runtime>(
     let matched_games = classified_games.len();
     let updated_games = classified_games.iter().filter(|game| game.updated).count();
 
-    Ok(ClassifyGamesSummary {
+    let summary = ClassifyGamesSummary {
         scanned_games: matched_games + skipped_games,
         matched_games,
         updated_games,
         unchanged_games: matched_games.saturating_sub(updated_games),
         skipped_games,
         games: classified_games,
-    })
+    };
+
+    if summary.updated_games > 0 {
+        catalog::rebuild_catalog_cache(app)?;
+    }
+
+    Ok(summary)
 }
 
 fn best_category_match<'a>(

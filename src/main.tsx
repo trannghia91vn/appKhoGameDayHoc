@@ -40,6 +40,11 @@ type ExportGamesArchiveSummary = {
   archiveBytes: number;
 };
 
+type ExportGamesArchiveProgress = {
+  exportedFiles: number;
+  currentPath: string;
+};
+
 type DeleteGamesSummary = {
   deletedGames: number;
   skippedGames: number;
@@ -126,6 +131,9 @@ const ADMIN_PASSWORD_STORAGE_KEY = "yeutre.gameLauncher.adminPasswordHash.v1";
 const ADMIN_PASSWORD_SALT = "yeutre-game-launcher-admin-v1";
 const MAX_BROWSER_SCAN_FILES = 2_000;
 const MAX_BROWSER_HTML_FILE_BYTES = 80 * 1024 * 1024;
+const VIRTUAL_GAME_LIST_THRESHOLD = 150;
+const VIRTUAL_GAME_ROW_HEIGHT = 75;
+const VIRTUAL_GAME_LIST_OVERSCAN = 8;
 
 type TauriInputFile = File & {
   path?: string;
@@ -628,6 +636,7 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
   const [selectedGameIds, setSelectedGameIds] = useState<string[]>([]);
   const [installSummary, setInstallSummary] = useState<InstallGamesSummary | null>(null);
   const [exportSummary, setExportSummary] = useState<ExportGamesArchiveSummary | null>(null);
+  const [exportProgress, setExportProgress] = useState<ExportGamesArchiveProgress | null>(null);
   const [classificationSummary, setClassificationSummary] = useState<ClassifyGamesSummary | null>(null);
   const [isScanningGames, setIsScanningGames] = useState(false);
   const [isUpdatingGames, setIsUpdatingGames] = useState(false);
@@ -636,7 +645,9 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
   const [newAdminPassword, setNewAdminPassword] = useState("");
   const [exportAdminPassword, setExportAdminPassword] = useState("");
   const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [gameListViewport, setGameListViewport] = useState({ height: 0, scrollTop: 0 });
   const folderInputRef = useRef<HTMLInputElement | null>(null);
+  const gameListRef = useRef<HTMLDivElement | null>(null);
   const recentDeepLinkSelections = useRef(new Map<string, number>());
   const playHealthTimeoutRef = useRef<number | null>(null);
   const playRequestSerialRef = useRef(0);
@@ -1508,10 +1519,12 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
       setIsExportingGames(true);
       setError(null);
       setExportSummary(null);
+      setExportProgress(null);
       setStatus("Đang nén toàn bộ kho game thành file zip...");
 
       const summary = await invoke<ExportGamesArchiveSummary>("export_games_archive");
       setExportSummary(summary);
+      setExportProgress(null);
       setExportAdminPassword("");
       setStatus(
         "Đã xuất " + summary.exportedGames +
@@ -1587,18 +1600,6 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
   }, [games, pendingDeepLinkGameId, playGame]);
 
   useEffect(() => {
-    if (activePage !== "library" || !focusedGameId) {
-      return;
-    }
-
-    window.requestAnimationFrame(() => {
-      document
-        .querySelector(`[data-game-id="${focusedGameId}"]`)
-        ?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-    });
-  }, [activePage, focusedGameId]);
-
-  useEffect(() => {
     const handleGameRuntimeMessage = (event: MessageEvent) => {
       const data = event.data as Partial<GameRuntimeMessage> | null;
       if (!data || data.source !== "yeutre-game-runtime") {
@@ -1628,6 +1629,29 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
     window.addEventListener("message", handleGameRuntimeMessage);
     return () => window.removeEventListener("message", handleGameRuntimeMessage);
   }, [appendDebug]);
+
+  useEffect(() => {
+    if (!isTauriRuntime || !isAdmin) {
+      return;
+    }
+
+    let cleanupExportProgress: (() => void) | undefined;
+    listen<ExportGamesArchiveProgress>("game-export-progress", (event) => {
+      setExportProgress(event.payload);
+      if (isExportingGames) {
+        setStatus(
+          "Đang xuất kho game: " + event.payload.exportedFiles +
+            " file" + (event.payload.currentPath ? " · " + event.payload.currentPath : ""),
+        );
+      }
+    }).then((unlisten) => {
+      cleanupExportProgress = unlisten;
+    });
+
+    return () => {
+      cleanupExportProgress?.();
+    };
+  }, [isAdmin, isExportingGames]);
 
   useEffect(() => {
     if (!isTauriRuntime) {
@@ -1714,6 +1738,44 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
   const allVisibleGamesSelected =
     deletableFilteredGames.length > 0 &&
     deletableFilteredGames.every((game) => selectedLibraryGameIds.includes(game.id));
+  const shouldVirtualizeGameList = filteredGames.length >= VIRTUAL_GAME_LIST_THRESHOLD;
+  const virtualStartIndex = shouldVirtualizeGameList
+    ? Math.max(0, Math.floor(gameListViewport.scrollTop / VIRTUAL_GAME_ROW_HEIGHT) - VIRTUAL_GAME_LIST_OVERSCAN)
+    : 0;
+  const virtualVisibleCount = shouldVirtualizeGameList
+    ? Math.ceil((gameListViewport.height || 620) / VIRTUAL_GAME_ROW_HEIGHT) + VIRTUAL_GAME_LIST_OVERSCAN * 2
+    : filteredGames.length;
+  const virtualEndIndex = shouldVirtualizeGameList
+    ? Math.min(filteredGames.length, virtualStartIndex + virtualVisibleCount)
+    : filteredGames.length;
+  const visibleGameRows = filteredGames.slice(virtualStartIndex, virtualEndIndex);
+  const virtualTopSpacer = shouldVirtualizeGameList ? virtualStartIndex * VIRTUAL_GAME_ROW_HEIGHT : 0;
+  const virtualBottomSpacer = shouldVirtualizeGameList
+    ? Math.max(0, (filteredGames.length - virtualEndIndex) * VIRTUAL_GAME_ROW_HEIGHT)
+    : 0;
+
+  useEffect(() => {
+    if (activePage !== "library" || !focusedGameId) {
+      return;
+    }
+
+    const focusedIndex = filteredGames.findIndex((game) => game.id === focusedGameId);
+    if (filteredGames.length >= VIRTUAL_GAME_LIST_THRESHOLD && focusedIndex >= 0) {
+      window.requestAnimationFrame(() => {
+        gameListRef.current?.scrollTo({
+          top: Math.max(0, focusedIndex * VIRTUAL_GAME_ROW_HEIGHT - VIRTUAL_GAME_ROW_HEIGHT),
+          behavior: "smooth",
+        });
+      });
+      return;
+    }
+
+    window.requestAnimationFrame(() => {
+      document
+        .querySelector(`[data-game-id="${focusedGameId}"]`)
+        ?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    });
+  }, [activePage, filteredGames, focusedGameId]);
 
   const toggleAllVisibleGames = useCallback(() => {
     if (!isAdmin || !isLibrarySelectionMode) {
@@ -1940,9 +2002,24 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
             </div>
             ) : null}
 
-            <div className="game-list" role="list" aria-label="Danh sách game đã cài">
+            <div
+              className="game-list"
+              ref={gameListRef}
+              role="list"
+              aria-label="Danh sách game đã cài"
+              onScroll={(event) => {
+                if (!shouldVirtualizeGameList) {
+                  return;
+                }
+                const target = event.currentTarget;
+                setGameListViewport({ height: target.clientHeight, scrollTop: target.scrollTop });
+              }}
+            >
               {filteredGames.length > 0 ? (
-                filteredGames.map((game, index) => {
+                <>
+                  {virtualTopSpacer > 0 ? <div className="game-list-spacer" style={{ height: virtualTopSpacer }} /> : null}
+                  {visibleGameRows.map((game, index) => {
+                    const absoluteIndex = virtualStartIndex + index;
                   const isGameSelectedForDelete = selectedLibraryGameIds.includes(game.id);
                   const rowClassName = [
                     "game-row",
@@ -1979,13 +2056,15 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
                       ) : (
                         <span className="game-selection-slot" aria-hidden="true" />
                       )}
-                      <span className="game-rank">{String(index + 1).padStart(2, "0")}</span>
+                      <span className="game-rank">{String(absoluteIndex + 1).padStart(2, "0")}</span>
                       <span className="game-title-block">
                         <strong>{game.title}</strong>
                       </span>
                     </div>
                   );
-                })
+                  })}
+                  {virtualBottomSpacer > 0 ? <div className="game-list-spacer" style={{ height: virtualBottomSpacer }} /> : null}
+                </>
               ) : (
                 <div className="empty-state">
                   <strong>Không tìm thấy game phù hợp.</strong>
@@ -2316,7 +2395,11 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
               <div className="archive-status">
                 <span>Kho hiện tại</span>
                 <strong>{installedGameCount} game đã cài</strong>
-                <small>File zip được tạo trong Downloads để lưu trữ khi cần.</small>
+                <small>
+                  {isExportingGames && exportProgress
+                    ? "Đã nén " + exportProgress.exportedFiles + " file"
+                    : "File zip được tạo trong Downloads để lưu trữ khi cần."}
+                </small>
               </div>
             </form>
 
