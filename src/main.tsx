@@ -1916,6 +1916,49 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
     : 0;
 
   useEffect(() => {
+    gameListRef.current?.scrollTo({ top: 0 });
+    setGameListViewport((current) => current.scrollTop === 0 ? current : { ...current, scrollTop: 0 });
+  }, [searchQuery, selectedCategory]);
+
+  useEffect(() => {
+    if (activePage !== "library") {
+      return;
+    }
+
+    const list = gameListRef.current;
+    if (!list) {
+      return;
+    }
+
+    const syncGameListViewport = () => {
+      setGameListViewport((current) => {
+        const nextHeight = list.clientHeight;
+        const nextScrollTop = list.scrollTop;
+        if (current.height === nextHeight && current.scrollTop === nextScrollTop) {
+          return current;
+        }
+        return { height: nextHeight, scrollTop: nextScrollTop };
+      });
+    };
+
+    syncGameListViewport();
+    window.requestAnimationFrame(syncGameListViewport);
+
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", syncGameListViewport);
+      return () => {
+        window.removeEventListener("resize", syncGameListViewport);
+      };
+    }
+
+    const observer = new ResizeObserver(syncGameListViewport);
+    observer.observe(list);
+    return () => {
+      observer.disconnect();
+    };
+  }, [activePage, filteredGames.length, isLeftMenuVisible, isLibrarySelectionMode, isAdmin]);
+
+  useEffect(() => {
     if (activePage !== "library" || !focusedGameId) {
       return;
     }
@@ -2263,22 +2306,24 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
                 >
                   {busyGameId === focusedGame.id ? "Đang mở..." : "Chơi ngay"}
                 </button>
-                <div className="game-detail-grid">
-                  <span>
-                    <strong>ID</strong>
-                    {focusedGame.id}
-                  </span>
-                </div>
-                <div className="deep-link-panel">
-                  <div className="deep-link-heading">
-                    <span>Deep link PowerPoint</span>
-                    {isAdmin ? (
-                      <button className="copy-link-button" onClick={() => void copySelectedDeepLink()} type="button">
-                        Copy
-                      </button>
-                    ) : null}
+                <div className="launch-secondary">
+                  <div className="game-detail-grid">
+                    <span>
+                      <strong>ID</strong>
+                      {focusedGame.id}
+                    </span>
                   </div>
-                  <code>{selectedDeepLink}</code>
+                  <div className="deep-link-panel">
+                    <div className="deep-link-heading">
+                      <span>Deep link PowerPoint</span>
+                      {isAdmin ? (
+                        <button className="copy-link-button" onClick={() => void copySelectedDeepLink()} type="button">
+                          Copy
+                        </button>
+                      ) : null}
+                    </div>
+                    <code>{selectedDeepLink}</code>
+                  </div>
                 </div>
               </>
             ) : (

@@ -874,6 +874,7 @@ h3 {
   gap: 14px;
   grid-template-columns: minmax(0, 1fr) 340px;
   min-height: 620px;
+  min-width: 0;
 }
 
 .catalog-panel,
@@ -888,7 +889,9 @@ h3 {
 .catalog-panel {
   display: grid;
   gap: 14px;
-  grid-template-rows: auto auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto auto minmax(260px, 1fr);
+  min-height: 0;
+  min-width: 0;
   overflow: hidden;
   padding: 16px;
 }
@@ -898,6 +901,7 @@ h3 {
   display: flex;
   gap: 18px;
   justify-content: space-between;
+  min-width: 0;
 }
 
 .quick-stats {
@@ -929,6 +933,8 @@ h3 {
 .catalog-controls {
   display: grid;
   gap: 10px;
+  min-height: 0;
+  min-width: 0;
 }
 
 .search-field {
@@ -994,6 +1000,7 @@ h3 {
   display: grid;
   gap: 12px;
   grid-template-columns: auto 1fr auto auto;
+  min-width: 0;
   padding: 9px 11px;
 }
 
@@ -1109,11 +1116,14 @@ h3 {
 }
 
 .game-list {
+  align-content: start;
   display: grid;
   gap: 9px;
-  min-height: 0;
+  min-height: 240px;
   overflow: auto;
   padding-right: 4px;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 
 .game-row {
@@ -1192,6 +1202,8 @@ h3 {
   align-self: start;
   display: grid;
   gap: 14px;
+  min-height: 0;
+  min-width: 0;
   overflow: hidden;
   padding: 16px;
   position: sticky;
@@ -1225,9 +1237,18 @@ h3 {
   background: #27d86c;
 }
 
+.launch-secondary {
+  display: grid;
+  gap: 8px;
+  min-height: 0;
+  overflow: auto;
+  scrollbar-gutter: stable;
+}
+
 .game-detail-grid {
   display: grid;
   gap: 8px;
+  min-width: 0;
 }
 
 .game-detail-grid span,
@@ -1781,6 +1802,7 @@ h3 {
 /* Embedded workspace layout: 30% controls, 70% exercise view. */
 body {
   height: 100vh;
+  height: 100dvh;
   overflow: hidden;
 }
 
@@ -1790,7 +1812,10 @@ body {
   grid-template-columns: minmax(330px, 3fr) minmax(0, 7fr);
   grid-template-rows: auto auto auto minmax(0, 1fr);
   height: 100vh;
+  height: 100dvh;
   max-width: none;
+  min-height: 0;
+  min-width: 0;
   padding: 12px;
 }
 
@@ -1848,7 +1873,13 @@ body {
   margin: 0;
 }
 
-.launcher-console,
+.launcher-console {
+  grid-row: 4;
+  min-height: 0;
+  overflow: hidden;
+  padding-right: 2px;
+}
+
 .settings-page {
   grid-row: 4;
   min-height: 0;
@@ -1858,8 +1889,9 @@ body {
 }
 
 .launcher-console {
+  gap: 10px;
   grid-template-columns: 1fr;
-  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-rows: minmax(320px, 1fr) auto;
 }
 
 .launcher-console h1,
@@ -1877,6 +1909,9 @@ body {
   bottom: 0;
   gap: 8px;
   margin-top: auto;
+  max-height: min(218px, 32dvh);
+  min-height: 0;
+  overflow: hidden;
   padding: 10px;
   position: sticky;
   top: auto;
@@ -1932,6 +1967,16 @@ body {
 
 .catalog-panel {
   min-height: 0;
+  grid-template-rows: auto auto auto minmax(260px, 1fr);
+  overflow: hidden;
+}
+
+.launch-secondary {
+  max-height: 86px;
+}
+
+.game-list {
+  min-height: 260px;
 }
 
 .console-toolbar,
@@ -1976,6 +2021,143 @@ body {
 
 .game-row {
   grid-template-columns: 28px 44px minmax(0, 1fr);
+}
+
+@media (min-width: 981px) and (max-height: 820px) {
+  .app-shell {
+    gap: 8px;
+    padding: 8px;
+  }
+
+  .topbar {
+    gap: 8px;
+    padding: 6px;
+  }
+
+  .topbar-tab {
+    padding: 8px 10px;
+  }
+
+  .status-row {
+    gap: 8px;
+    min-height: 38px;
+    padding: 8px 10px;
+  }
+
+  .debug-panel {
+    padding: 7px 9px;
+  }
+
+  .debug-panel pre {
+    max-height: 120px;
+  }
+
+  .launcher-console {
+    gap: 8px;
+    grid-template-rows: minmax(300px, 1fr) auto;
+  }
+
+  .catalog-panel {
+    gap: 8px;
+    grid-template-rows: auto auto auto minmax(260px, 1fr);
+    padding: 10px;
+  }
+
+  .console-toolbar {
+    gap: 10px;
+  }
+
+  .launcher-console h1 {
+    font-size: 1.28rem;
+  }
+
+  .quick-stats {
+    gap: 6px;
+  }
+
+  .quick-stats span {
+    font-size: 0.66rem;
+    min-height: 40px;
+    padding: 6px 7px;
+  }
+
+  .quick-stats strong {
+    font-size: 1rem;
+  }
+
+  .catalog-controls {
+    gap: 7px;
+  }
+
+  .search-field {
+    padding: 8px 10px;
+  }
+
+  .category-tabs {
+    gap: 6px;
+  }
+
+  .category-tab {
+    font-size: 0.78rem;
+    padding: 7px 9px;
+  }
+
+  .library-actions {
+    gap: 8px;
+    padding: 7px 9px;
+  }
+
+  .select-all-games,
+  .selection-count,
+  .selection-mode-switch {
+    font-size: 0.76rem;
+  }
+
+  .game-list {
+    gap: 7px;
+    min-height: 260px;
+  }
+
+  .game-row {
+    gap: 10px;
+    min-height: 58px;
+    padding: 9px 11px;
+  }
+
+  .game-rank {
+    inline-size: 38px;
+    min-height: 32px;
+  }
+
+  .game-title-block strong {
+    font-size: 0.92rem;
+  }
+
+  .launch-panel {
+    gap: 7px;
+    max-height: 150px;
+    padding: 8px;
+  }
+
+  .launch-panel .selected-game-header {
+    padding: 8px 10px;
+  }
+
+  .launch-panel .selected-game-header h2 {
+    font-size: 0.94rem;
+  }
+
+  .launch-panel .play-button {
+    min-height: 38px;
+  }
+
+  .launch-secondary {
+    max-height: 34px;
+  }
+
+  .launch-panel .deep-link-panel {
+    display: none;
+  }
 }
 
 .exercise-view {
