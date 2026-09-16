@@ -47,11 +47,14 @@ struct DeepLinkState {
 }
 
 const DEFAULT_WINDOW_WIDTH: u32 = 1360;
+const DEFAULT_WINDOW_HEIGHT: u32 = 720;
 const MIN_WINDOW_WIDTH: u32 = 860;
+const MIN_WINDOW_HEIGHT: u32 = 560;
+const WINDOW_WORK_AREA_MARGIN: u32 = 16;
 
-fn fit_main_window_to_screen_height(app: &AppHandle) {
+fn fit_main_window_to_work_area(app: &AppHandle) {
     let Some(window) = app.get_webview_window("main") else {
-        log::warn!("main window not found while fitting to screen height");
+        log::warn!("main window not found while fitting to work area");
         return;
     };
 
@@ -62,43 +65,45 @@ fn fit_main_window_to_screen_height(app: &AppHandle) {
         .or_else(|| window.primary_monitor().ok().flatten());
 
     let Some(monitor) = monitor else {
-        log::warn!("no monitor found while fitting main window to screen height");
+        log::warn!("no monitor found while fitting main window to work area");
         return;
     };
 
     let work_area = *monitor.work_area();
-    let target_height = work_area.size.height;
+    let screen_height = work_area.size.height;
     let screen_width = work_area.size.width;
-    if target_height == 0 || screen_width == 0 {
+    if screen_height == 0 || screen_width == 0 {
         log::warn!("invalid monitor work area while fitting main window");
         return;
     }
 
     let min_width = MIN_WINDOW_WIDTH.min(screen_width);
+    let available_height = screen_height.saturating_sub(WINDOW_WORK_AREA_MARGIN).max(1);
+    let min_height = MIN_WINDOW_HEIGHT.min(available_height);
+    let target_height = DEFAULT_WINDOW_HEIGHT.min(available_height).max(min_height);
     let current_width = window
         .outer_size()
         .map(|size| size.width)
         .unwrap_or(DEFAULT_WINDOW_WIDTH)
         .clamp(min_width, screen_width);
     let centered_x = work_area.position.x + ((screen_width - current_width) / 2) as i32;
+    let centered_y = work_area.position.y + ((screen_height - target_height) / 2) as i32;
 
     if let Err(err) = window.set_min_size(Some(Size::Physical(PhysicalSize::new(
-        min_width,
-        target_height,
+        min_width, min_height,
     )))) {
-        log::warn!("failed to set main window minimum screen height: {err}");
+        log::warn!("failed to set main window minimum work-area size: {err}");
     }
 
     if let Err(err) = window.set_size(Size::Physical(PhysicalSize::new(
         current_width,
         target_height,
     ))) {
-        log::warn!("failed to set main window screen height: {err}");
+        log::warn!("failed to set main window work-area size: {err}");
     }
 
     if let Err(err) = window.set_position(Position::Physical(PhysicalPosition::new(
-        centered_x,
-        work_area.position.y,
+        centered_x, centered_y,
     ))) {
         log::warn!("failed to align main window to monitor work area: {err}");
     }
@@ -503,7 +508,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let app_handle = app.handle().clone();
-            fit_main_window_to_screen_height(&app_handle);
+            fit_main_window_to_work_area(&app_handle);
 
             app.deep_link().on_open_url(move |event| {
                 for url in event.urls() {

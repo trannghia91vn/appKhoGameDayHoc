@@ -152,6 +152,10 @@ type GameRuntimeMessage = {
 const isTauriRuntime = "__TAURI_INTERNALS__" in window;
 const ADMIN_PASSWORD_STORAGE_KEY = "yeutre.gameLauncher.adminPasswordHash.v1";
 const ADMIN_PASSWORD_SALT = "yeutre-game-launcher-admin-v1";
+const APP_ZOOM_STORAGE_KEY = "yeutre.appZoom.v1";
+const MIN_APP_ZOOM = 0.8;
+const MAX_APP_ZOOM = 1.3;
+const APP_ZOOM_STEP = 0.1;
 const MAX_BROWSER_SCAN_FILES = 2_000;
 const MAX_BROWSER_HTML_FILE_BYTES = 80 * 1024 * 1024;
 const VIRTUAL_GAME_LIST_THRESHOLD = 150;
@@ -168,6 +172,25 @@ function fileRelativePath(file: File) {
 
 function fileSystemPath(file: File) {
   return (file as TauriInputFile).path?.trim() || null;
+}
+
+function clampAppZoom(value: number) {
+  if (!Number.isFinite(value)) {
+    return 1;
+  }
+  return Math.min(MAX_APP_ZOOM, Math.max(MIN_APP_ZOOM, value));
+}
+
+function normalizeAppZoom(value: number) {
+  return Number(clampAppZoom(value).toFixed(2));
+}
+
+function readSavedAppZoom() {
+  try {
+    return normalizeAppZoom(Number(window.localStorage.getItem(APP_ZOOM_STORAGE_KEY)));
+  } catch {
+    return 1;
+  }
 }
 
 function htmlSourcePathFiles(files: File[]) {
@@ -645,6 +668,7 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
   const [selectedLibraryGameIds, setSelectedLibraryGameIds] = useState<string[]>([]);
   const [isLibrarySelectionMode, setIsLibrarySelectionMode] = useState(false);
   const [isLeftMenuVisible, setIsLeftMenuVisible] = useState(true);
+  const [appZoom, setAppZoom] = useState(readSavedAppZoom);
   const [isDeletingGames, setIsDeletingGames] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
   const [configuredCategories, setConfiguredCategories] = useState<Category[]>([]);
@@ -698,6 +722,22 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
 
   const clearDebug = useCallback(() => {
     setDebugEntries([]);
+  }, []);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(APP_ZOOM_STORAGE_KEY, appZoom.toFixed(2));
+    } catch (err) {
+      console.warn("[YeuTre debug] save app zoom failed", err);
+    }
+  }, [appZoom]);
+
+  const changeAppZoom = useCallback((direction: -1 | 1) => {
+    setAppZoom((current) => normalizeAppZoom(current + direction * APP_ZOOM_STEP));
+  }, []);
+
+  const resetAppZoom = useCallback(() => {
+    setAppZoom(1);
   }, []);
 
   const copyDebug = useCallback(async () => {
@@ -992,12 +1032,6 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
   }, [appendDebug, games]);
 
   const copySelectedDeepLink = useCallback(async () => {
-    if (!isAdmin) {
-      setError("Tài khoản User không được copy deep link PowerPoint.");
-      setStatus("Chức năng này chỉ dành cho Admin.");
-      return;
-    }
-
     const game = focusedGameId ? games.find((item) => item.id === focusedGameId) : null;
     if (!game) {
       setError("Chưa chọn game để copy deep link.");
@@ -1016,7 +1050,7 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
       setError(message);
       setStatus("Không thể copy deep link PowerPoint.");
     }
-  }, [focusedGameId, games, isAdmin]);
+  }, [focusedGameId, games]);
 
   const toggleLibraryGameSelection = useCallback((gameId: string) => {
     if (!isAdmin) {
@@ -1956,7 +1990,7 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
     return () => {
       observer.disconnect();
     };
-  }, [activePage, filteredGames.length, isLeftMenuVisible, isLibrarySelectionMode, isAdmin]);
+  }, [activePage, appZoom, filteredGames.length, isAdmin, isLeftMenuVisible, isLibrarySelectionMode]);
 
   useEffect(() => {
     if (activePage !== "library" || !focusedGameId) {
@@ -2022,10 +2056,19 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
   const selectedDeepLink = focusedGame ? `yeutregame://play/${focusedGame.id}` : "Chọn game để xem deep link";
   const playerSrc = launchedGame && isTauriRuntime ? gameAssetUrl(launchedGame) : null;
   const previewPlayerHtml = launchedGame && !isTauriRuntime ? buildPreviewPlayerHtml(launchedGame) : undefined;
-  const appShellClassName = isLeftMenuVisible ? "app-shell" : "app-shell left-menu-hidden";
+  const appShellClassName = [
+    "app-shell",
+    isLeftMenuVisible ? "" : "left-menu-hidden",
+    isLeftMenuVisible ? "left-menu-minimal" : "",
+  ].filter(Boolean).join(" ");
+  const appShellStyle = {
+    "--menu-zoom": appZoom,
+    "--menu-zoom-inverse": Number((1 / appZoom).toFixed(4)),
+  } as React.CSSProperties;
+  const appZoomPercent = Math.round(appZoom * 100);
 
   return (
-    <main className={appShellClassName}>
+    <main className={appShellClassName} style={appShellStyle}>
       <nav className="topbar" aria-label="Điều hướng chính">
         <div className="brand-mark">
           <span>{APP_INITIALS}</span>
@@ -2062,9 +2105,37 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
           ) : null}
         </div>
         <div className="topbar-session">
-          <span className={error ? "topbar-status error" : "topbar-status"}>{error ? "Cần kiểm tra" : "Sẵn sàng"}</span>
           <span className="role-badge">{isAdmin ? "Admin" : "User"}</span>
-          <button className="logout-button" onClick={onLogout} type="button">Thoát</button>
+          <div className="topbar-session-actions">
+            <div className="app-zoom-control" aria-label="Zoom menu">
+              <button
+                aria-label="Thu nhỏ menu"
+                disabled={appZoom <= MIN_APP_ZOOM}
+                onClick={() => changeAppZoom(-1)}
+                type="button"
+              >
+                -
+              </button>
+              <button
+                aria-label="Đặt zoom menu về 100%"
+                className="app-zoom-value"
+                onClick={resetAppZoom}
+                onDoubleClick={resetAppZoom}
+                type="button"
+              >
+                {appZoomPercent}%
+              </button>
+              <button
+                aria-label="Phóng to menu"
+                disabled={appZoom >= MAX_APP_ZOOM}
+                onClick={() => changeAppZoom(1)}
+                type="button"
+              >
+                +
+              </button>
+            </div>
+            <button className="logout-button" onClick={onLogout} type="button">Thoát</button>
+          </div>
         </div>
       </nav>
 
@@ -2139,217 +2210,205 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
 
       {activePage === "library" || !isAdmin ? (
         <section className="launcher-console">
-          <div className="catalog-panel">
-            <div className="console-toolbar">
-              <div>
-                <p className="eyebrow">Kho game giáo dục</p>
-                <h1>Chọn game để chơi</h1>
+          <div className="menu-zoom-content launcher-console-zoom">
+            <div className="catalog-panel">
+              <div className="console-toolbar">
+                <div>
+                  <p className="eyebrow">Kho game giáo dục</p>
+                  <h1>Chọn game để chơi</h1>
+                </div>
+                <div className="quick-stats" aria-label="Thống kê kho game">
+                  <span>
+                    <strong>{games.length}</strong>
+                    game
+                  </span>
+                  <span>
+                    <strong>{categories.length - 1}</strong>
+                    nhóm
+                  </span>
+                  <span>
+                    <strong>{gradeCount}</strong>
+                    khối
+                  </span>
+                </div>
               </div>
-              <div className="quick-stats" aria-label="Thống kê kho game">
-                <span>
-                  <strong>{games.length}</strong>
-                  game
-                </span>
-                <span>
-                  <strong>{categories.length - 1}</strong>
-                  nhóm
-                </span>
-                <span>
-                  <strong>{gradeCount}</strong>
-                  khối
-                </span>
-              </div>
-            </div>
 
-            <div className="catalog-controls">
-              <label className="search-field">
-                <span>Tìm</span>
-                <input
-                  type="search"
-                  value={searchQuery}
-                  onChange={(event) => setSearchQuery(event.target.value)}
-                  placeholder="Tên game, mã, khối lớp..."
-                />
-              </label>
-              <div className="category-tabs" aria-label="Lọc theo nhóm game">
-                {categories.map((category) => (
-                  <button
-                    className={category === selectedCategory ? "category-tab active" : "category-tab"}
-                    key={category}
-                    onClick={() => setSelectedCategory(category)}
-                    type="button"
-                  >
-                    {category}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {isAdmin ? (
-            <div className="library-actions">
-              <label className="select-all-games">
-                <input
-                  type="checkbox"
-                  checked={isLibrarySelectionMode && allVisibleGamesSelected}
-                  disabled={!isLibrarySelectionMode || deletableFilteredGames.length === 0 || isDeletingGames}
-                  onChange={toggleAllVisibleGames}
-                />
-                <span>Chọn tất cả đang hiển thị</span>
-              </label>
-              <span className="selection-count">{selectedDeletableGameCount} game đã chọn</span>
-              <label className="selection-mode-switch">
-                <span>Chế độ chọn</span>
-                <input
-                  checked={isLibrarySelectionMode}
-                  disabled={isDeletingGames}
-                  onChange={toggleLibrarySelectionMode}
-                  type="checkbox"
-                />
-                <span className="switch-track" aria-hidden="true" />
-              </label>
-              <button
-                className="delete-button"
-                disabled={isDeletingGames || selectedDeletableGameCount === 0}
-                onClick={deleteSelectedGames}
-                type="button"
-              >
-                {isDeletingGames ? "Đang xóa..." : "Xóa đã chọn"}
-              </button>
-            </div>
-            ) : null}
-
-            <div
-              className="game-list"
-              ref={gameListRef}
-              role="list"
-              aria-label="Danh sách game đã cài"
-              onScroll={(event) => {
-                if (!shouldVirtualizeGameList) {
-                  return;
-                }
-                const target = event.currentTarget;
-                setGameListViewport({ height: target.clientHeight, scrollTop: target.scrollTop });
-              }}
-            >
-              {filteredGames.length > 0 ? (
-                <>
-                  {virtualTopSpacer > 0 ? <div className="game-list-spacer" style={{ height: virtualTopSpacer }} /> : null}
-                  {visibleGameRows.map((game, index) => {
-                    const absoluteIndex = virtualStartIndex + index;
-                  const isGameSelectedForDelete = selectedLibraryGameIds.includes(game.id);
-                  const rowClassName = [
-                    "game-row",
-                    focusedGame?.id === game.id ? "selected" : "",
-                    isAdmin && isLibrarySelectionMode ? "selection-mode" : "",
-                    isGameSelectedForDelete ? "marked-for-delete" : "",
-                  ].filter(Boolean).join(" ");
-
-                  return (
-                    <div
-                      className={rowClassName}
-                      key={game.id}
-                      data-game-id={game.id}
-                      onClick={() => selectLibraryGame(game.id)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter" || event.key === " ") {
-                          event.preventDefault();
-                          selectLibraryGame(game.id);
-                        }
-                      }}
-                      role="listitem"
-                      tabIndex={0}
+              <div className="catalog-controls">
+                <label className="search-field">
+                  <span>Tìm</span>
+                  <input
+                    type="search"
+                    value={searchQuery}
+                    onChange={(event) => setSearchQuery(event.target.value)}
+                    placeholder="Tên game, mã, khối lớp..."
+                  />
+                </label>
+                <div className="category-tabs" aria-label="Lọc theo nhóm game">
+                  {categories.map((category) => (
+                    <button
+                      className={category === selectedCategory ? "category-tab active" : "category-tab"}
+                      key={category}
+                      onClick={() => setSelectedCategory(category)}
+                      type="button"
                     >
-                      {isAdmin && isLibrarySelectionMode ? (
-                        <input
-                          aria-label={"Chọn " + game.title}
-                          checked={isGameSelectedForDelete}
-                          className="game-select-checkbox"
-                          disabled={game.isInstalled === false || isDeletingGames}
-                          onChange={() => toggleLibraryGameSelection(game.id)}
-                          onClick={(event) => event.stopPropagation()}
-                          type="checkbox"
-                        />
-                      ) : (
-                        <span className="game-selection-slot" aria-hidden="true" />
-                      )}
-                      <span className="game-rank">{String(absoluteIndex + 1).padStart(2, "0")}</span>
-                      <span className="game-title-block">
-                        <strong>{game.title}</strong>
-                      </span>
-                    </div>
-                  );
-                  })}
-                  {virtualBottomSpacer > 0 ? <div className="game-list-spacer" style={{ height: virtualBottomSpacer }} /> : null}
-                </>
-              ) : (
-                <div className="empty-state">
-                  <strong>Không tìm thấy game phù hợp.</strong>
-                  <span>Thử xoá bộ lọc hoặc cập nhật thêm game trong Cài đặt.</span>
+                      {category}
+                    </button>
+                  ))}
                 </div>
-              )}
-            </div>
-          </div>
+              </div>
 
-          <aside className="launch-panel" aria-label="Thao tác mở game">
-            {focusedGame ? (
-              <>
-                <div className="selected-game-header">
-                  <p className="eyebrow">Game đang chọn</p>
-                  <h2>{focusedGame.title}</h2>
-                  <span>{focusedGame.category} · {focusedGame.grade}</span>
-                </div>
+              {isAdmin ? (
+              <div className="library-actions">
+                <label className="select-all-games">
+                  <input
+                    type="checkbox"
+                    checked={isLibrarySelectionMode && allVisibleGamesSelected}
+                    disabled={!isLibrarySelectionMode || deletableFilteredGames.length === 0 || isDeletingGames}
+                    onChange={toggleAllVisibleGames}
+                  />
+                  <span>Chọn tất cả đang hiển thị</span>
+                </label>
+                <span className="selection-count">{selectedDeletableGameCount} game đã chọn</span>
+                <label className="selection-mode-switch">
+                  <span>Chế độ chọn</span>
+                  <input
+                    checked={isLibrarySelectionMode}
+                    disabled={isDeletingGames}
+                    onChange={toggleLibrarySelectionMode}
+                    type="checkbox"
+                  />
+                  <span className="switch-track" aria-hidden="true" />
+                </label>
                 <button
-                  className="play-button"
-                  disabled={busyGameId === focusedGame.id}
-                  onClick={() => void playGame(focusedGame.id)}
+                  className="delete-button"
+                  disabled={isDeletingGames || selectedDeletableGameCount === 0}
+                  onClick={deleteSelectedGames}
                   type="button"
                 >
-                  {busyGameId === focusedGame.id ? "Đang mở..." : "Chơi ngay"}
+                  {isDeletingGames ? "Đang xóa..." : "Xóa đã chọn"}
                 </button>
-                <div className="launch-secondary">
-                  <div className="game-detail-grid">
-                    <span>
-                      <strong>ID</strong>
-                      {focusedGame.id}
-                    </span>
+              </div>
+              ) : null}
+
+              <div
+                className="game-list"
+                ref={gameListRef}
+                role="list"
+                aria-label="Danh sách game đã cài"
+                onScroll={(event) => {
+                  if (!shouldVirtualizeGameList) {
+                    return;
+                  }
+                  const target = event.currentTarget;
+                  setGameListViewport({ height: target.clientHeight, scrollTop: target.scrollTop });
+                }}
+              >
+                {filteredGames.length > 0 ? (
+                  <>
+                    {virtualTopSpacer > 0 ? <div className="game-list-spacer" style={{ height: virtualTopSpacer }} /> : null}
+                    {visibleGameRows.map((game, index) => {
+                      const absoluteIndex = virtualStartIndex + index;
+                    const isGameSelectedForDelete = selectedLibraryGameIds.includes(game.id);
+                    const rowClassName = [
+                      "game-row",
+                      focusedGame?.id === game.id ? "selected" : "",
+                      isAdmin && isLibrarySelectionMode ? "selection-mode" : "",
+                      isGameSelectedForDelete ? "marked-for-delete" : "",
+                    ].filter(Boolean).join(" ");
+
+                    return (
+                      <div
+                        className={rowClassName}
+                        key={game.id}
+                        data-game-id={game.id}
+                        onClick={() => selectLibraryGame(game.id)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            selectLibraryGame(game.id);
+                          }
+                        }}
+                        role="listitem"
+                        tabIndex={0}
+                      >
+                        {isAdmin && isLibrarySelectionMode ? (
+                          <input
+                            aria-label={"Chọn " + game.title}
+                            checked={isGameSelectedForDelete}
+                            className="game-select-checkbox"
+                            disabled={game.isInstalled === false || isDeletingGames}
+                            onChange={() => toggleLibraryGameSelection(game.id)}
+                            onClick={(event) => event.stopPropagation()}
+                            type="checkbox"
+                          />
+                        ) : (
+                          <span className="game-selection-slot" aria-hidden="true" />
+                        )}
+                        <span className="game-rank">{String(absoluteIndex + 1).padStart(2, "0")}</span>
+                        <span className="game-title-block">
+                          <strong>{game.title}</strong>
+                        </span>
+                      </div>
+                    );
+                    })}
+                    {virtualBottomSpacer > 0 ? <div className="game-list-spacer" style={{ height: virtualBottomSpacer }} /> : null}
+                  </>
+                ) : (
+                  <div className="empty-state">
+                    <strong>Không tìm thấy game phù hợp.</strong>
+                    <span>Thử xoá bộ lọc hoặc cập nhật thêm game trong Cài đặt.</span>
                   </div>
+                )}
+              </div>
+            </div>
+
+            <aside className="launch-panel" aria-label="Thao tác mở game">
+              {focusedGame ? (
+                <>
+                  <button
+                    className="play-button"
+                    disabled={busyGameId === focusedGame.id}
+                    onClick={() => void playGame(focusedGame.id)}
+                    type="button"
+                  >
+                    {busyGameId === focusedGame.id ? "Đang mở..." : "Chơi ngay"}
+                  </button>
                   <div className="deep-link-panel">
                     <div className="deep-link-heading">
                       <span>Deep link PowerPoint</span>
-                      {isAdmin ? (
-                        <button className="copy-link-button" onClick={() => void copySelectedDeepLink()} type="button">
-                          Copy
-                        </button>
-                      ) : null}
+                      <button className="copy-link-button" onClick={() => void copySelectedDeepLink()} type="button">
+                        Copy
+                      </button>
                     </div>
                     <code>{selectedDeepLink}</code>
                   </div>
+                </>
+              ) : (
+                <div className="empty-state compact">
+                  <strong>Kho game đang trống.</strong>
+                  <span>Vào Cài đặt để quét folder hoặc USB chứa game.</span>
                 </div>
-              </>
-            ) : (
-              <div className="empty-state compact">
-                <strong>Kho game đang trống.</strong>
-                <span>Vào Cài đặt để quét folder hoặc USB chứa game.</span>
-              </div>
-            )}
-          </aside>
+              )}
+            </aside>
+          </div>
         </section>
       ) : (
         <section className="settings-page">
-          <div className="section-heading">
-            <h2>Cài đặt</h2>
-            <p>Thiết lập và cập nhật nguồn games cho app.</p>
-          </div>
-
-          <div className="settings-panel">
-            <div>
-              <p className="eyebrow">Cập nhật games</p>
-              <h3>Đồng bộ games từ folder hoặc USB</h3>
-              <p className="settings-copy">
-                Chọn folder/USB chứa folder game, hoặc chọn trực tiếp nhiều file <code>.html</code>. Sau đó bấm Quét game để app so sánh
-                với kho hiện tại; chỉ những game mới được chọn để đồng bộ khi bấm Xác nhận cập nhật.
-              </p>
+          <div className="menu-zoom-content settings-page-zoom">
+            <div className="section-heading">
+              <h2>Cài đặt</h2>
+              <p>Thiết lập và cập nhật nguồn games cho app.</p>
             </div>
+
+            <div className="settings-panel">
+              <div>
+                <p className="eyebrow">Cập nhật games</p>
+                <h3>Đồng bộ games từ folder hoặc USB</h3>
+                <p className="settings-copy">
+                  Chọn folder/USB chứa folder game, hoặc chọn trực tiếp nhiều file <code>.html</code>. Sau đó bấm Quét game để app so sánh
+                  với kho hiện tại; chỉ những game mới được chọn để đồng bộ khi bấm Xác nhận cập nhật.
+                </p>
+              </div>
 
             <div className="folder-picker">
               <input
@@ -2755,6 +2814,7 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
             </form>
           </div>
 
+          </div>
         </section>
       )}
 
