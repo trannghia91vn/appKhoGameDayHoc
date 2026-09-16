@@ -968,6 +968,7 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
     setBusyGameId(gameId);
     setLaunchedGameId(gameId);
     setFocusedGameId(gameId);
+    setIsLeftMenuVisible(false);
     setActivePage("library");
     setError(null);
     const requestSerial = playRequestSerialRef.current + 1;
