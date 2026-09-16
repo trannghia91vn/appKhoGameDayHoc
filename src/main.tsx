@@ -1,9 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactDOM from "react-dom/client";
-import { invoke } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import "./styles.css";
+
+const APP_NAME = "Kho game cô Trang Trần";
+const APP_INITIALS = "CT";
+const APP_VERSION = import.meta.env.PACKAGE_VERSION;
 
 type Game = {
   id: string;
@@ -179,8 +183,14 @@ function htmlSourcePathFiles(files: File[]) {
 }
 
 function displayNameForSourcePath(path: string) {
-  const parts = path.split(/[\/]/).filter(Boolean);
+  const parts = path.split(/[\\/]/).filter(Boolean);
   return parts[parts.length - 1] || path;
+}
+
+function waitForUiFrame() {
+  return new Promise<void>((resolve) => {
+    window.requestAnimationFrame(() => resolve());
+  });
 }
 
 type LoginScreenProps = {
@@ -384,11 +394,7 @@ function escapeHtml(value: string) {
 }
 
 function gameAssetUrl(game: Game) {
-  const entry = game.entry
-    .split("/")
-    .map((part) => encodeURIComponent(part))
-    .join("/");
-  return `ytasset://game/${game.id}/${entry}`;
+  return convertFileSrc(`game/${game.id}/${game.entry}`, "ytasset");
 }
 
 function buildPreviewPlayerHtml(game: Game) {
@@ -557,9 +563,12 @@ function LoginScreen({ onLogin }: LoginScreenProps) {
     <main className="login-shell">
       <form className="login-card" onSubmit={(event) => void submitLogin(event)}>
         <div className="login-brand">
-          <span>YT</span>
+          <span>{APP_INITIALS}</span>
           <div>
-            <p className="eyebrow">YeuTre Game</p>
+            <div className="brand-title-line">
+              <strong>{APP_NAME}</strong>
+              <span className="version-badge">v{APP_VERSION}</span>
+            </div>
             <h1>{isSetup ? "Thiết lập admin" : "Đăng nhập"}</h1>
           </div>
         </div>
@@ -1400,14 +1409,23 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
       appendDebug("scan completed", {
         mode: canUseSourceDirMode ? "source-dirs" : canUsePathMode ? "paths" : "bytes",
         htmlFiles: result.games.length,
+        newGames: newGameIds.length,
+        existingGames: result.games.length - newGameIds.length,
         skippedFiles: result.skippedFiles,
       });
       setScanResult(result);
       setSelectedGameIds(newGameIds);
-      setStatus(
-        "Đã quét " + result.games.length + " game, phát hiện " + newGameIds.length +
-          " game mới. Bấm Xác nhận cập nhật để đồng bộ game mới.",
-      );
+      if (newGameIds.length === 0) {
+        setStatus(
+          "Đã quét " + result.games.length +
+            " game nhưng không có game mới. Game trùng ID sẽ không được ghi đè; hãy đổi tên file/folder hoặc xóa game cũ trước khi cập nhật lại.",
+        );
+      } else {
+        setStatus(
+          "Đã quét " + result.games.length + " game, phát hiện " + newGameIds.length +
+            " game mới. Bấm Xác nhận cập nhật để đồng bộ game mới.",
+        );
+      }
     } catch (err) {
       setError(String(err));
       setStatus("Không thể quét nguồn game đã chọn.");
@@ -1423,6 +1441,12 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
   }, []);
 
   const updateGamesFromSelectedFolder = useCallback(async () => {
+    if (!isAdmin) {
+      setError("Tài khoản User không được cập nhật kho game.");
+      setStatus("Cài đặt chỉ dành cho Admin.");
+      return;
+    }
+
     if ((pendingSourceDirs.length === 0 && sourceFiles.length === 0 && sourceFilePaths.length === 0) || !scanResult) {
       setError("Bạn cần bấm Quét game trước khi xác nhận cập nhật.");
       setStatus("Chưa có kết quả quét để cập nhật.");
@@ -1439,10 +1463,24 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
       return;
     }
 
+    const updateMode = pendingSourceDirs.length > 0
+      ? "source-dirs"
+      : sourceFilePaths.length > 0
+        ? "paths"
+        : "bytes";
+
     try {
       setIsUpdatingGames(true);
       setError(null);
       setStatus("Đang đồng bộ các game mới đã xác nhận...");
+      appendDebug("install requested", {
+        mode: isTauriRuntime ? updateMode : "preview",
+        selectedGames: newSelectedGameIds.length,
+        sourceDirs: pendingSourceDirs.length,
+        sourcePathFiles: sourceFilePaths.length,
+        sourceByteFiles: sourceFiles.length,
+      });
+      await waitForUiFrame();
 
       const summary = isTauriRuntime
         ? pendingSourceDirs.length > 0
@@ -1466,6 +1504,7 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
           targetDir: "Preview browser",
           gameIds: newSelectedGameIds,
         };
+      appendDebug("install completed", summary);
 
       if (!isTauriRuntime) {
         const previewNewGames = scanResult.games
@@ -1491,12 +1530,14 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
           " game mới. Kho game đã được làm mới.",
       );
     } catch (err) {
-      setError(String(err));
+      const message = errorMessage(err);
+      appendDebug("install failed", { mode: updateMode, message });
+      setError(message);
       setStatus("Không thể đồng bộ file HTML đã xác nhận.");
     } finally {
       setIsUpdatingGames(false);
     }
-  }, [isAdmin, loadGames, pendingSourceDirs, scanResult, selectedGameIds, sourceFilePaths, sourceFiles]);
+  }, [appendDebug, isAdmin, loadGames, pendingSourceDirs, scanResult, selectedGameIds, sourceFilePaths, sourceFiles]);
 
   const loadDiagnostics = useCallback(async () => {
     if (!isAdmin) {
@@ -1925,6 +1966,15 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
     [games],
   );
   const scanNewCount = scanResult?.games.filter((game) => game.isNew).length ?? 0;
+  const canUpdateScannedGames = Boolean(scanResult) && selectedGameIds.length > 0 && !isScanningGames && !isUpdatingGames;
+  const updateGamesButtonLabel = isUpdatingGames
+    ? "Đang cập nhật..."
+    : scanResult && scanNewCount === 0
+      ? "Không có game mới"
+      : "Xác nhận cập nhật";
+  const updateGamesButtonTitle = scanResult && scanNewCount === 0
+    ? "Game đã có trong kho nên app không ghi đè. Hãy đổi tên file/folder hoặc xóa game cũ trước."
+    : undefined;
   const selectedDeepLink = focusedGame ? `yeutregame://play/${focusedGame.id}` : "Chọn game để xem deep link";
   const playerSrc = launchedGame && isTauriRuntime ? gameAssetUrl(launchedGame) : null;
   const previewPlayerHtml = launchedGame && !isTauriRuntime ? buildPreviewPlayerHtml(launchedGame) : undefined;
@@ -1934,8 +1984,11 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
     <main className={appShellClassName}>
       <nav className="topbar" aria-label="Điều hướng chính">
         <div className="brand-mark">
-          <span>YT</span>
-          <strong>YeuTre Game</strong>
+          <span>{APP_INITIALS}</span>
+          <div className="brand-title-line">
+            <strong>{APP_NAME}</strong>
+            <span className="version-badge">v{APP_VERSION}</span>
+          </div>
         </div>
         <label className="menu-visibility-switch">
           <span>Menu trái</span>
@@ -2292,11 +2345,12 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
                 </small>
               </div>
               <button
-                disabled={!scanResult || selectedGameIds.length === 0 || isScanningGames || isUpdatingGames}
+                disabled={!canUpdateScannedGames}
                 onClick={() => void updateGamesFromSelectedFolder()}
+                title={updateGamesButtonTitle}
                 type="button"
               >
-                {isUpdatingGames ? "Đang cập nhật..." : "Xác nhận cập nhật"}
+                {updateGamesButtonLabel}
               </button>
             </div>
 

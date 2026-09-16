@@ -34,7 +34,7 @@ pub fn open_game(app: &tauri::AppHandle, game_id: &str) -> Result<(), String> {
     }
 
     let window = tauri::WebviewWindowBuilder::new(app, label, WebviewUrl::External(url))
-        .title(format!("YeuTre Game - {}", game.title))
+        .title(format!("Kho game cô Trang Trần - {}", game.title))
         .inner_size(1120.0, 820.0)
         .min_inner_size(860.0, 620.0)
         .resizable(true)

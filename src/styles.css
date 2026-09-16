@@ -140,6 +140,7 @@ code {
   align-items: center;
   display: flex;
   gap: 13px;
+  min-width: 0;
 }
 
 .login-brand > span {
@@ -157,6 +158,35 @@ code {
 
 .login-brand h1 {
   font-size: 1.9rem;
+}
+
+.brand-title-line {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.brand-title-line strong {
+  color: #ffffff;
+  font-weight: 900;
+  overflow-wrap: anywhere;
+}
+
+.version-badge {
+  align-items: center;
+  background: rgba(53, 237, 126, 0.14);
+  border: 1px solid rgba(53, 237, 126, 0.38);
+  border-radius: 999px;
+  color: var(--color-green);
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-size: 0.72rem;
+  font-weight: 900;
+  line-height: 1;
+  padding: 5px 8px;
+  white-space: nowrap;
 }
 
 .login-role-tabs {
@@ -274,9 +304,11 @@ code {
   width: 34px;
 }
 
+.brand-mark .brand-title-line {
+  flex-wrap: nowrap;
+}
+
 .brand-mark strong {
-  color: #ffffff;
-  font-weight: 900;
   white-space: nowrap;
 }
 

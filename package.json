@@ -1,11 +1,13 @@
 {
   "name": "yeutre-game-launcher",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 1420",
     "build": "tsc && vite build",
+    "bump-version": "node scripts/bump-version.mjs",
+    "setup-git-hooks": "node scripts/setup-git-hooks.mjs",
     "preview": "vite preview",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",

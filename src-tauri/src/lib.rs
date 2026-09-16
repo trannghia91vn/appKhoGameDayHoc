@@ -230,6 +230,27 @@ fn last_deep_link_status(app: AppHandle) -> Option<DeepLinkStatus> {
         .and_then(|latest_status| latest_status.clone())
 }
 
+async fn run_blocking_command<T, F>(operation: &'static str, task: F) -> Result<T, String>
+where
+    T: Send + 'static,
+    F: FnOnce() -> Result<T, String> + Send + 'static,
+{
+    logging::event("blocking_command_started", &[("operation", operation)]);
+    let result = tauri::async_runtime::spawn_blocking(task)
+        .await
+        .map_err(|err| format!("{operation} bi gian doan: {err}"))?;
+
+    match &result {
+        Ok(_) => logging::event("blocking_command_completed", &[("operation", operation)]),
+        Err(message) => logging::event(
+            "blocking_command_failed",
+            &[("operation", operation), ("reason", message.as_str())],
+        ),
+    }
+
+    result
+}
+
 #[tauri::command]
 fn list_games(app: AppHandle) -> Result<Vec<GameManifest>, String> {
     games::catalog::list_games(&app)
@@ -329,51 +350,72 @@ fn classify_games_by_categories(app: AppHandle) -> Result<ClassifyGamesSummary, 
 }
 
 #[tauri::command]
-fn scan_games_from_files(
+async fn scan_games_from_files(
     app: AppHandle,
     files: Vec<IncomingGameFile>,
 ) -> Result<ScanGamesSummary, String> {
-    games::install::scan_games_from_files(&app, files)
+    run_blocking_command("Quet file HTML", move || {
+        games::install::scan_games_from_files(&app, files)
+    })
+    .await
 }
 
 #[tauri::command]
-fn scan_games_from_paths(
+async fn scan_games_from_paths(
     app: AppHandle,
     files: Vec<IncomingGamePath>,
 ) -> Result<ScanGamesSummary, String> {
-    games::install::scan_games_from_paths(&app, files)
+    run_blocking_command("Quet duong dan file HTML", move || {
+        games::install::scan_games_from_paths(&app, files)
+    })
+    .await
 }
 
 #[tauri::command]
-fn install_games_from_files(
+async fn install_games_from_files(
     app: AppHandle,
     files: Vec<IncomingGameFile>,
     game_ids: Vec<String>,
 ) -> Result<InstallGamesSummary, String> {
-    games::install::install_games_from_files(&app, files, game_ids)
+    run_blocking_command("Dong bo file HTML", move || {
+        games::install::install_games_from_files(&app, files, game_ids)
+    })
+    .await
 }
 
 #[tauri::command]
-fn install_games_from_paths(
+async fn install_games_from_paths(
     app: AppHandle,
     files: Vec<IncomingGamePath>,
     game_ids: Vec<String>,
 ) -> Result<InstallGamesSummary, String> {
-    games::install::install_games_from_paths(&app, files, game_ids)
+    run_blocking_command("Dong bo duong dan file HTML", move || {
+        games::install::install_games_from_paths(&app, files, game_ids)
+    })
+    .await
 }
 
 #[tauri::command]
-fn scan_game_sources(app: AppHandle, source_dirs: Vec<String>) -> Result<ScanGamesSummary, String> {
-    games::install::scan_game_sources(&app, source_dirs)
+async fn scan_game_sources(
+    app: AppHandle,
+    source_dirs: Vec<String>,
+) -> Result<ScanGamesSummary, String> {
+    run_blocking_command("Quet nguon game", move || {
+        games::install::scan_game_sources(&app, source_dirs)
+    })
+    .await
 }
 
 #[tauri::command]
-fn install_game_sources(
+async fn install_game_sources(
     app: AppHandle,
     source_dirs: Vec<String>,
     game_ids: Vec<String>,
 ) -> Result<InstallGamesSummary, String> {
-    games::install::install_game_sources(&app, source_dirs, game_ids)
+    run_blocking_command("Dong bo nguon game", move || {
+        games::install::install_game_sources(&app, source_dirs, game_ids)
+    })
+    .await
 }
 
 #[tauri::command]
