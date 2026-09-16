@@ -46,8 +46,52 @@ pub fn export_games_archive<R: Runtime>(
         .map_err(|err| format!("Khong tao duoc thu muc xuat zip: {err}"))?;
 
     let archive_path = unique_archive_path(&output_dir);
-    let archive_file = File::create(&archive_path)
-        .map_err(|err| format!("Khong tao duoc file zip xuat kho game: {err}"))?;
+    let temp_path = temp_archive_path(&archive_path);
+    let write_result = write_archive_to_temp(app, &games_dir, &temp_path);
+
+    match write_result {
+        Ok((exported_files, archive_bytes)) => {
+            fs::rename(&temp_path, &archive_path).map_err(|err| {
+                format!("Khong doi ten file zip tam thanh file xuat chinh: {err}")
+            })?;
+            emit_export_progress(app, exported_files, "Hoàn tất xuất kho game");
+
+            Ok(ExportGamesArchiveSummary {
+                archive_path: archive_path.to_string_lossy().to_string(),
+                exported_games: games.len(),
+                exported_files,
+                archive_bytes,
+            })
+        }
+        Err(message) => {
+            let _ = fs::remove_file(&temp_path);
+            Err(message)
+        }
+    }
+}
+
+fn emit_export_progress<R: Runtime>(app: &AppHandle<R>, exported_files: usize, current_path: &str) {
+    let _ = app.emit(
+        "game-export-progress",
+        ExportGamesArchiveProgress {
+            exported_files,
+            current_path: current_path.to_string(),
+        },
+    );
+}
+
+fn write_archive_to_temp<R: Runtime>(
+    app: &AppHandle<R>,
+    games_dir: &Path,
+    temp_path: &Path,
+) -> Result<(usize, u64), String> {
+    if temp_path.exists() {
+        fs::remove_file(temp_path)
+            .map_err(|err| format!("Khong xoa duoc file zip tam cu: {err}"))?;
+    }
+
+    let archive_file = File::create(temp_path)
+        .map_err(|err| format!("Khong tao duoc file zip tam de xuat kho game: {err}"))?;
     let mut zip = ZipWriter::new(archive_file);
     let options = SimpleFileOptions::default();
     let mut exported_files = 0;
@@ -58,8 +102,8 @@ pub fn export_games_archive<R: Runtime>(
     add_directory_to_zip(
         app,
         &mut zip,
-        &games_dir,
-        &games_dir,
+        games_dir,
+        games_dir,
         "games",
         options,
         &mut exported_files,
@@ -79,28 +123,11 @@ pub fn export_games_archive<R: Runtime>(
     zip.finish()
         .map_err(|err| format!("Khong hoan tat file zip kho game: {err}"))?;
 
-    let archive_bytes = fs::metadata(&archive_path)
+    let archive_bytes = fs::metadata(temp_path)
         .map_err(|err| format!("Khong doc duoc thong tin file zip da xuat: {err}"))?
         .len();
 
-    emit_export_progress(app, exported_files, "Hoàn tất xuất kho game");
-
-    Ok(ExportGamesArchiveSummary {
-        archive_path: archive_path.to_string_lossy().to_string(),
-        exported_games: games.len(),
-        exported_files,
-        archive_bytes,
-    })
-}
-
-fn emit_export_progress<R: Runtime>(app: &AppHandle<R>, exported_files: usize, current_path: &str) {
-    let _ = app.emit(
-        "game-export-progress",
-        ExportGamesArchiveProgress {
-            exported_files,
-            current_path: current_path.to_string(),
-        },
-    );
+    Ok((exported_files, archive_bytes))
 }
 
 fn unique_archive_path(output_dir: &Path) -> PathBuf {
@@ -109,6 +136,14 @@ fn unique_archive_path(output_dir: &Path) -> PathBuf {
         .map(|duration| duration.as_secs())
         .unwrap_or(0);
     output_dir.join(format!("yeutre-game-kho-{timestamp}.zip"))
+}
+
+fn temp_archive_path(archive_path: &Path) -> PathBuf {
+    let file_name = archive_path
+        .file_name()
+        .map(|name| name.to_string_lossy())
+        .unwrap_or_else(|| "yeutre-game-kho.zip".into());
+    archive_path.with_file_name(format!(".{file_name}.tmp"))
 }
 
 fn add_directory_to_zip<R: Runtime, W: Write + std::io::Seek>(
@@ -147,7 +182,15 @@ fn add_directory_to_zip<R: Runtime, W: Write + std::io::Seek>(
         if file_type.is_dir() {
             zip.add_directory(format!("{archive_name}/"), options)
                 .map_err(|err| format!("Khong them duoc thu muc vao zip {archive_name}: {err}"))?;
-            add_directory_to_zip(app, zip, root_dir, &path, archive_root, options, exported_files)?;
+            add_directory_to_zip(
+                app,
+                zip,
+                root_dir,
+                &path,
+                archive_root,
+                options,
+                exported_files,
+            )?;
         } else if file_type.is_file() {
             add_file_to_zip(zip, &path, &archive_name, options)?;
             *exported_files += 1;

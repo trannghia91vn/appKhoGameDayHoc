@@ -8,6 +8,7 @@ use categories::{Category, CategoryInput};
 use games::{
     catalog::GameManifest,
     export::ExportGamesArchiveSummary,
+    import::ImportGamesArchiveSummary,
     install::{
         ClassifyGamesSummary, DeleteGamesSummary, IncomingGameFile, IncomingGamePath,
         InstallGamesSummary, ScanGamesSummary,
@@ -17,6 +18,18 @@ use serde::Serialize;
 use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, Position, Size};
 use tauri_plugin_deep_link::DeepLinkExt;
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AppDiagnostics {
+    app_data_dir: String,
+    games_dir: String,
+    installed_games: usize,
+    total_game_bytes: u64,
+    catalog_cache_exists: bool,
+    catalog_cache_valid: bool,
+    categories_count: usize,
+}
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -223,6 +236,29 @@ fn list_games(app: AppHandle) -> Result<Vec<GameManifest>, String> {
 }
 
 #[tauri::command]
+fn get_app_diagnostics(app: AppHandle) -> Result<AppDiagnostics, String> {
+    let cache_status = games::catalog::catalog_cache_status(&app)?;
+    let games = games::catalog::list_games(&app)?;
+    let categories = categories::list_categories(&app)?;
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|err| format!("Khong xac dinh duoc thu muc du lieu app: {err}"))?;
+    let games_dir = games::catalog::installed_games_dir(&app)?;
+    let total_game_bytes = games.iter().map(|game| game.total_bytes).sum();
+
+    Ok(AppDiagnostics {
+        app_data_dir: app_data_dir.to_string_lossy().to_string(),
+        games_dir: games_dir.to_string_lossy().to_string(),
+        installed_games: games.len(),
+        total_game_bytes,
+        catalog_cache_exists: cache_status.exists,
+        catalog_cache_valid: cache_status.valid,
+        categories_count: categories.len(),
+    })
+}
+
+#[tauri::command]
 fn open_deep_link(app: AppHandle, url: String) -> Result<(), String> {
     handle_deep_link(&app, &url, "command")
 }
@@ -364,6 +400,41 @@ fn export_games_archive(app: AppHandle) -> Result<ExportGamesArchiveSummary, Str
     }
 }
 
+#[tauri::command]
+fn import_games_archive(
+    app: AppHandle,
+    archive_path: String,
+) -> Result<ImportGamesArchiveSummary, String> {
+    logging::event(
+        "games_import_archive_requested",
+        &[("archive_path", archive_path.as_str())],
+    );
+
+    match games::import::import_games_archive(&app, archive_path) {
+        Ok(summary) => {
+            let imported_games = summary.imported_games.to_string();
+            let skipped_games = summary.skipped_games.to_string();
+            let archive_path = summary.archive_path.clone();
+            logging::event(
+                "games_import_archive_completed",
+                &[
+                    ("imported_games", &imported_games),
+                    ("skipped_games", &skipped_games),
+                    ("archive_path", &archive_path),
+                ],
+            );
+            Ok(summary)
+        }
+        Err(message) => {
+            logging::event(
+                "games_import_archive_failed",
+                &[("reason", message.as_str())],
+            );
+            Err(message)
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let mut builder = tauri::Builder::default();
@@ -422,6 +493,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             last_deep_link_status,
             list_games,
+            get_app_diagnostics,
             open_deep_link,
             delete_games,
             list_categories,
@@ -434,7 +506,8 @@ pub fn run() {
             install_games_from_files,
             install_games_from_paths,
             install_game_sources,
-            export_games_archive
+            export_games_archive,
+            import_games_archive
         ])
         .run(tauri::generate_context!())
         .expect("error while running YeuTre Game Launcher");

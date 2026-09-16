@@ -44,6 +44,13 @@ struct CatalogCache {
 
 const CATALOG_CACHE_VERSION: u32 = 1;
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CatalogCacheStatus {
+    pub exists: bool,
+    pub valid: bool,
+}
+
 pub fn list_games<R: Runtime>(app: &AppHandle<R>) -> Result<Vec<GameManifest>, String> {
     if let Some(games) = read_catalog_cache(app)? {
         return Ok(games);
@@ -57,6 +64,35 @@ pub fn rebuild_catalog_cache<R: Runtime>(app: &AppHandle<R>) -> Result<Vec<GameM
     sort_games(&mut games);
     write_catalog_cache(app, &games)?;
     Ok(games)
+}
+
+pub fn catalog_cache_status<R: Runtime>(app: &AppHandle<R>) -> Result<CatalogCacheStatus, String> {
+    let cache_path = catalog_cache_path(app)?;
+    let content = match fs::read_to_string(&cache_path) {
+        Ok(content) => content,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(CatalogCacheStatus {
+                exists: false,
+                valid: false,
+            });
+        }
+        Err(err) => return Err(format!("Khong doc duoc catalog cache: {err}")),
+    };
+
+    let cache = match serde_json::from_str::<CatalogCache>(&content) {
+        Ok(cache) if cache.version == CATALOG_CACHE_VERSION => cache,
+        _ => {
+            return Ok(CatalogCacheStatus {
+                exists: true,
+                valid: false,
+            });
+        }
+    };
+
+    Ok(CatalogCacheStatus {
+        exists: true,
+        valid: catalog_cache_is_valid(app, &cache.games)?,
+    })
 }
 
 fn sort_games(games: &mut [GameManifest]) {

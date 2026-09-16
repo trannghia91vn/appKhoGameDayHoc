@@ -28,7 +28,7 @@ Dang ky:
 - `tauri_plugin_single_instance` de app dang chay nhan argv tu instance moi.
 - `tauri_plugin_log` de ghi log.
 - Protocol bat dong bo `ytasset`.
-- Commands `last_deep_link_status`, `list_games`, `open_deep_link`, `delete_games`, `scan_games_from_files`, `install_games_from_files`, `scan_game_sources`, `install_game_sources`, `list_categories`, `save_category`, `delete_category`, `classify_games_by_categories`; deep link tu OS duoc Rust xu ly truc tiep qua `handle_deep_link`.
+- Commands `last_deep_link_status`, `list_games`, `get_app_diagnostics`, `open_deep_link`, `delete_games`, `scan_games_from_files`, `scan_games_from_paths`, `install_games_from_files`, `install_games_from_paths`, `scan_game_sources`, `install_game_sources`, `export_games_archive`, `import_games_archive`, `list_categories`, `save_category`, `delete_category`, `classify_games_by_categories`; deep link tu OS duoc Rust xu ly truc tiep qua `handle_deep_link`.
 
 Commands:
 
@@ -40,6 +40,9 @@ Commands:
 - `scan_game_sources(app, sourceDirs)`: quet folder/USB bang duong dan native, nhan dien folder game va HTML don le.
 - `install_game_sources(app, sourceDirs, gameIds)`: copy nguyen folder game hoac HTML don moi da xac nhan vao app data; khong ghi de game da co.
 - `delete_games(app, gameIds)`: chi xoa thu muc game da cai trong app data; khong xoa game bundle.
+- `export_games_archive(app)`: nen `<app-data>/games` va optional `categories.json` thanh zip trong Downloads; ghi vao file tam truoc, finish thanh cong moi rename sang file zip chinh.
+- `import_games_archive(app, archivePath)`: doc zip co cau truc `games/<game-id>/...`, validate game ID/resource path/entry/size/file count, import qua staging tam, khong ghi de game da co, optional restore `categories.json`, roi rebuild catalog cache.
+- `get_app_diagnostics(app)`: tra app data path, games path, so game, tong byte, so category, va trang thai `catalog.json` de Admin copy khi debug.
 - `classify_games_by_categories(app)`: doc categories runtime, doi keywords va ten game ve chu khong dau, sau do cap nhat `category` trong `game.json` cua game da cai neu ten file/title khop keyword.
 
 ## Lop 3: Embedded exercise view va asset protocol
@@ -86,6 +89,13 @@ P2 da them cac toi uu dau tien cho kho lon:
 - HTML shim cache va cache headers trong `ytasset` protocol.
 - Export zip phat event `game-export-progress` de UI cap nhat so file dang nen.
 
+P3 hardening them vong backup/restore va chan doan:
+
+- Export zip ghi vao file tam cung thu muc roi rename sang file final sau khi zip finish thanh cong.
+- Import zip dung staging folder trong app data, cleanup staging khi loi hoac khi xong.
+- Zip import chi chap nhan `games/<game-id>/...` va optional `categories.json`; path traversal, absolute path, slash nguoc, game thieu entry HTML, file/folder qua gioi han deu bi reject/skip.
+- `get_app_diagnostics` cho Admin copy nhanh app data path, games path, games count, total bytes, categories count va status `catalog.json`.
+
 Huong tiep theo neu kho cuc lon:
 
 - Chuyen scan/install thanh background job co cancel rieng.
@@ -121,6 +131,17 @@ Backend luu danh sach tai `<app-data>/categories.json` qua cac commands:
 Category CRUD doc lap voi game catalog: xoa category khong xoa file game. Ten category khong duoc trung, keywords phai co it nhat mot gia tri, va ID duoc validate/normalize de dung on dinh cho cac lan cap nhat sau.
 
 Section `Phan loai game` dung command `classify_games_by_categories()` de gan category cho game HTML da cai. Backend chi xu ly game co `isInstalled = true`. Thuat toan tao search text tu `title + id`, normalize ve lowercase ASCII khong dau, thay dau/cac ky tu dac biet bang khoang trang, roi so tung keyword da normalize theo whole-token substring. Neu nhieu category khop, category co so keyword khop nhieu nhat duoc chon; neu bang nhau thi giu category xuat hien truoc trong danh sach da luu. Khi category thay doi, backend ghi lai `<app-data>/games/<game-id>/game.json` va giu cac field metadata khac.
+
+## Release checklist P3
+
+Truoc khi giao ban su dung thuc te:
+
+1. Chay `npm run build`.
+2. Chay `cargo test` trong `src-tauri`.
+3. Smoke test Admin: import zip co 2 HTML don, import zip co 2 folder game nhieu asset, choi game sau import va kiem tra asset relative.
+4. Smoke test backup: export kho, dung app data test sach, import lai zip, catalog hien du game va deep link PowerPoint van load dung.
+5. Smoke test phan quyen: User khong thay `Cài đặt`, khong dung duoc xoa file, copy deep link, diagnostics, import/export, che do chon.
+6. Khi co loi hien truong, Admin vao `Cài đặt` -> `Chẩn đoán app` -> `Copy diagnostics` gui kem log runtime trong panel chan doan.
 
 ## UI Design Contract
 

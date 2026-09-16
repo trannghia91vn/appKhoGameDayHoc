@@ -40,6 +40,25 @@ type ExportGamesArchiveSummary = {
   archiveBytes: number;
 };
 
+type ImportGamesArchiveSummary = {
+  archivePath: string;
+  importedGames: number;
+  importedFiles: number;
+  skippedGames: number;
+  skippedFiles: number;
+  gameIds: string[];
+};
+
+type AppDiagnostics = {
+  appDataDir: string;
+  gamesDir: string;
+  installedGames: number;
+  totalGameBytes: number;
+  catalogCacheExists: boolean;
+  catalogCacheValid: boolean;
+  categoriesCount: number;
+};
+
 type ExportGamesArchiveProgress = {
   exportedFiles: number;
   currentPath: string;
@@ -636,11 +655,15 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
   const [selectedGameIds, setSelectedGameIds] = useState<string[]>([]);
   const [installSummary, setInstallSummary] = useState<InstallGamesSummary | null>(null);
   const [exportSummary, setExportSummary] = useState<ExportGamesArchiveSummary | null>(null);
+  const [importSummary, setImportSummary] = useState<ImportGamesArchiveSummary | null>(null);
+  const [appDiagnostics, setAppDiagnostics] = useState<AppDiagnostics | null>(null);
   const [exportProgress, setExportProgress] = useState<ExportGamesArchiveProgress | null>(null);
   const [classificationSummary, setClassificationSummary] = useState<ClassifyGamesSummary | null>(null);
   const [isScanningGames, setIsScanningGames] = useState(false);
   const [isUpdatingGames, setIsUpdatingGames] = useState(false);
   const [isExportingGames, setIsExportingGames] = useState(false);
+  const [isImportingGames, setIsImportingGames] = useState(false);
+  const [isLoadingDiagnostics, setIsLoadingDiagnostics] = useState(false);
   const [isClassifyingGames, setIsClassifyingGames] = useState(false);
   const [newAdminPassword, setNewAdminPassword] = useState("");
   const [exportAdminPassword, setExportAdminPassword] = useState("");
@@ -1475,6 +1498,96 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
     }
   }, [isAdmin, loadGames, pendingSourceDirs, scanResult, selectedGameIds, sourceFilePaths, sourceFiles]);
 
+  const loadDiagnostics = useCallback(async () => {
+    if (!isAdmin) {
+      return;
+    }
+
+    if (!isTauriRuntime) {
+      setAppDiagnostics(null);
+      return;
+    }
+
+    try {
+      setIsLoadingDiagnostics(true);
+      setError(null);
+      setAppDiagnostics(await invoke<AppDiagnostics>("get_app_diagnostics"));
+    } catch (err) {
+      const message = errorMessage(err);
+      console.error("[YeuTre debug] diagnostics failed", err);
+      setError(message);
+      setStatus("Không thể đọc diagnostics của app.");
+    } finally {
+      setIsLoadingDiagnostics(false);
+    }
+  }, [isAdmin]);
+
+  const copyDiagnostics = useCallback(async () => {
+    if (!appDiagnostics) {
+      setStatus("Chưa có diagnostics để sao chép.");
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(appDiagnostics, null, 2));
+      setStatus("Đã sao chép diagnostics.");
+    } catch (err) {
+      const message = errorMessage(err);
+      console.error("[YeuTre debug] copy diagnostics failed", err);
+      setError(message);
+      setStatus("Không thể sao chép diagnostics.");
+    }
+  }, [appDiagnostics]);
+
+  const importGamesArchive = useCallback(async () => {
+    if (!isAdmin) {
+      setError("Tài khoản User không được nhập kho game.");
+      setStatus("Cài đặt chỉ dành cho Admin.");
+      return;
+    }
+
+    if (!isTauriRuntime) {
+      setError("Tính năng nhập file zip chỉ chạy trong app Tauri.");
+      setStatus("Mở app bằng npm run tauri dev để nhập kho game.");
+      return;
+    }
+
+    try {
+      const selected = await open({
+        multiple: false,
+        filters: [{ name: "Kho game YeuTre", extensions: ["zip"] }],
+      });
+      const archivePath = Array.isArray(selected) ? selected[0] : selected;
+      if (!archivePath) {
+        setStatus("Chưa chọn file zip để nhập.");
+        return;
+      }
+
+      setIsImportingGames(true);
+      setError(null);
+      setImportSummary(null);
+      setStatus("Đang nhập kho game từ file zip...");
+
+      const summary = await invoke<ImportGamesArchiveSummary>("import_games_archive", { archivePath });
+      setImportSummary(summary);
+      await loadGames();
+      await loadCategories();
+      await loadDiagnostics();
+      setActivePage("library");
+      setStatus(
+        "Đã nhập " + summary.importedGames +
+          " game từ zip. Bỏ qua " + summary.skippedGames + " game trùng/không hợp lệ.",
+      );
+    } catch (err) {
+      const message = errorMessage(err);
+      console.error("[YeuTre debug] import games archive failed", err);
+      setError(message);
+      setStatus("Không thể nhập kho game từ file zip.");
+    } finally {
+      setIsImportingGames(false);
+    }
+  }, [isAdmin, loadCategories, loadDiagnostics, loadGames]);
+
   const exportGamesArchive = useCallback(async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!isAdmin) {
@@ -1560,6 +1673,12 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
     setPendingDelete(null);
     setPendingCategoryDelete(null);
   }, [activePage, isAdmin]);
+
+  useEffect(() => {
+    if (isAdmin && activePage === "settings") {
+      void loadDiagnostics();
+    }
+  }, [activePage, isAdmin, loadDiagnostics]);
 
   useEffect(() => {
     if (pendingDeepLinkGameId) {
@@ -2364,6 +2483,42 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
             ) : null}
           </div>
 
+          <div className="settings-panel import-panel">
+            <div>
+              <p className="eyebrow">Nhập kho game</p>
+              <h3>Khôi phục game từ file zip</h3>
+              <p className="settings-copy">
+                Chọn file <code>.zip</code> có cấu trúc <code>games/&lt;game-id&gt;/...</code>. Game trùng ID sẽ được bỏ qua để không ghi đè kho hiện tại.
+              </p>
+            </div>
+
+            <div className="import-archive-actions">
+              <button
+                className="archive-button"
+                disabled={isImportingGames}
+                onClick={() => void importGamesArchive()}
+                type="button"
+              >
+                {isImportingGames ? "Đang nhập zip..." : "Nhập file zip"}
+              </button>
+              <div className="archive-status">
+                <span>Quy tắc nhập</span>
+                <strong>Không ghi đè game đã có</strong>
+                <small>Import qua staging tạm; hoàn tất mới chuyển game vào kho.</small>
+              </div>
+            </div>
+
+            {importSummary ? (
+              <div className="update-summary archive-summary">
+                <strong>Đã nhập {importSummary.importedGames} game</strong>
+                <span>
+                  {importSummary.importedFiles} file · bỏ qua {importSummary.skippedGames} game · {importSummary.skippedFiles} file
+                </span>
+                <code>{importSummary.archivePath}</code>
+              </div>
+            ) : null}
+          </div>
+
           <div className="settings-panel archive-panel">
             <div>
               <p className="eyebrow">Xuất kho game</p>
@@ -2410,6 +2565,58 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
                   {exportSummary.exportedFiles} file · {formatBytes(exportSummary.archiveBytes)}
                 </span>
                 <code>{exportSummary.archivePath}</code>
+              </div>
+            ) : null}
+          </div>
+
+          <div className="settings-panel diagnostics-panel">
+            <div>
+              <p className="eyebrow">Chẩn đoán app</p>
+              <h3>Thông tin kho và cache</h3>
+              <p className="settings-copy">
+                Dùng phần này khi cần gửi trạng thái app để kiểm tra lỗi import/export, cache catalog hoặc dung lượng kho game.
+              </p>
+            </div>
+
+            <div className="diagnostics-actions">
+              <button
+                className="secondary-button"
+                disabled={isLoadingDiagnostics}
+                onClick={() => void loadDiagnostics()}
+                type="button"
+              >
+                {isLoadingDiagnostics ? "Đang đọc..." : "Tải diagnostics"}
+              </button>
+              <button
+                className="secondary-button"
+                disabled={!appDiagnostics}
+                onClick={() => void copyDiagnostics()}
+                type="button"
+              >
+                Copy diagnostics
+              </button>
+            </div>
+
+            {appDiagnostics ? (
+              <div className="diagnostics-grid">
+                <span>
+                  <small>Games</small>
+                  <strong>{appDiagnostics.installedGames}</strong>
+                </span>
+                <span>
+                  <small>Dung lượng</small>
+                  <strong>{formatBytes(appDiagnostics.totalGameBytes)}</strong>
+                </span>
+                <span>
+                  <small>Categories</small>
+                  <strong>{appDiagnostics.categoriesCount}</strong>
+                </span>
+                <span>
+                  <small>Catalog cache</small>
+                  <strong>{appDiagnostics.catalogCacheExists ? appDiagnostics.catalogCacheValid ? "Hợp lệ" : "Hỏng" : "Chưa có"}</strong>
+                </span>
+                <code>{appDiagnostics.appDataDir}</code>
+                <code>{appDiagnostics.gamesDir}</code>
               </div>
             ) : null}
           </div>

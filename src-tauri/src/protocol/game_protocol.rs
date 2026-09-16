@@ -90,7 +90,8 @@ where
             "default-src 'self' data: blob: ytasset:; connect-src 'self'; img-src 'self' data: blob: ytasset:; media-src 'self' data: blob: ytasset:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; object-src 'none'",
         );
     } else {
-        response_builder = response_builder.header("Cache-Control", "public, max-age=31536000, immutable");
+        response_builder =
+            response_builder.header("Cache-Control", "public, max-age=31536000, immutable");
     }
 
     response_builder.body(bytes).map_err(|err| {

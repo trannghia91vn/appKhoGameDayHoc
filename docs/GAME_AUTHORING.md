@@ -138,3 +138,32 @@ Khi cap nhat tu Cài đặt, launcher chi ghi vao app sau khi user bam `Xac nhan
 
 Neu scan khong thay game hop le, kiem tra lai folder da chon co folder game voi entry HTML hoac file `.html`/`.htm`. File/folder trung game ID, path khong hop le, symlink, `.DS_Store`, `Thumbs.db`, va `__MACOSX` se bi bo qua.
 
+## Backup va restore bang zip
+
+Trang `Cài đặt` co hai thao tac cho kho game:
+
+- `Xuất kho game`: tao file zip trong Downloads.
+- `Nhập file zip`: chon file `.zip` de khoi phuc game vao app.
+
+Cau truc zip chuan:
+
+```text
+yeutre-game-kho.zip
+  categories.json           # optional
+  games/
+    game-a/
+      index.html
+      game.json             # optional
+      images/a.png
+    game-b/
+      game.json
+      play.html
+      assets/card.png
+```
+
+Moi game trong zip phai nam trong `games/<game-id>/...`. `game-id` van dung chung rule cua deep link: chu thuong, so, `-`, `_`, toi da 80 ky tu. Game hop le can co `index.html`, hoac `game.json` co truong `entry` tro toi mot file HTML hop le trong folder game.
+
+Import zip khong ghi de game da co. Neu zip co `games/game-a/...` nhung app da co `game-a`, game do bi bo qua va duoc tinh vao summary. App import vao staging tam truoc, validate entry/path/size/file count, sau do moi move vao `<app-data>/games`. Import xong app rebuild `catalog.json` de kho game hien ngay.
+
+Zip tu app export ra la format backup chuan. Zip tao tay van dung duoc neu giu dung cau truc tren, khong co path traversal (`../`), slash nguoc, absolute path, symlink, hoac file he thong nhu `.DS_Store`.
+
