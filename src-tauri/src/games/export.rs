@@ -4,6 +4,7 @@ use std::{
     fs::{self, File},
     io::{Read, Write},
     path::{Path, PathBuf},
+    process::Command,
     time::{SystemTime, UNIX_EPOCH},
 };
 use tauri::{AppHandle, Emitter, Manager, Runtime};
@@ -68,6 +69,61 @@ pub fn export_games_archive<R: Runtime>(
             Err(message)
         }
     }
+}
+
+fn export_archive_folder(downloads_dir: &Path, archive_path: &Path) -> Result<PathBuf, String> {
+    let archive = fs::canonicalize(archive_path)
+        .map_err(|err| format!("Không tìm thấy file ZIP đã xuất: {err}"))?;
+    let downloads = fs::canonicalize(downloads_dir)
+        .map_err(|err| format!("Không tìm thấy thư mục Downloads: {err}"))?;
+    let name = archive
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("");
+    if !archive.is_file()
+        || archive.parent() != Some(downloads.as_path())
+        || !name.starts_with("yeutre-game-kho-")
+        || !name.ends_with(".zip")
+    {
+        return Err("File ZIP không thuộc kho game đã xuất trong Downloads.".to_string());
+    }
+    Ok(downloads)
+}
+
+pub fn open_export_archive_folder<R: Runtime>(
+    app: &AppHandle<R>,
+    archive_path: &str,
+) -> Result<(), String> {
+    let downloads = app
+        .path()
+        .download_dir()
+        .map_err(|err| format!("Không xác định được thư mục Downloads: {err}"))?;
+    let folder = export_archive_folder(&downloads, Path::new(archive_path))?;
+
+    #[cfg(target_os = "windows")]
+    let mut command = {
+        use std::os::windows::process::CommandExt;
+        let mut command = Command::new("explorer.exe");
+        command.arg(&folder).creation_flags(0x08000000);
+        command
+    };
+    #[cfg(target_os = "macos")]
+    let mut command = {
+        let mut command = Command::new("open");
+        command.arg(&folder);
+        command
+    };
+    #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
+    let mut command = {
+        let mut command = Command::new("xdg-open");
+        command.arg(&folder);
+        command
+    };
+
+    command
+        .spawn()
+        .map_err(|err| format!("Không mở được thư mục chứa file ZIP: {err}"))?;
+    Ok(())
 }
 
 fn emit_export_progress<R: Runtime>(app: &AppHandle<R>, exported_files: usize, current_path: &str) {
@@ -227,4 +283,41 @@ fn add_file_to_zip<W: Write + std::io::Seek>(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_opens_exported_zip_in_downloads() {
+        let root = std::env::temp_dir().join(format!(
+            "yeutre-export-folder-test-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let downloads = root.join("Downloads");
+        let other = root.join("Other");
+        fs::create_dir_all(&downloads).unwrap();
+        fs::create_dir_all(&other).unwrap();
+        let valid = downloads.join("yeutre-game-kho-123.zip");
+        let wrong_name = downloads.join("another.zip");
+        let wrong_folder = other.join("yeutre-game-kho-123.zip");
+        fs::write(&valid, []).unwrap();
+        fs::write(&wrong_name, []).unwrap();
+        fs::write(&wrong_folder, []).unwrap();
+
+        assert_eq!(
+            export_archive_folder(&downloads, &valid).unwrap(),
+            fs::canonicalize(&downloads).unwrap()
+        );
+        assert!(export_archive_folder(&downloads, &wrong_name).is_err());
+        assert!(export_archive_folder(&downloads, &wrong_folder).is_err());
+        assert!(export_archive_folder(&downloads, &downloads.join("missing.zip")).is_err());
+
+        fs::remove_dir_all(root).unwrap();
+    }
 }

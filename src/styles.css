@@ -1648,6 +1648,17 @@ h3 {
   overflow-wrap: anywhere;
 }
 
+.open-export-folder-button {
+  background: #142b32;
+  color: #ffffff;
+  justify-self: start;
+  min-width: 0;
+}
+
+.open-export-folder-button:hover {
+  background: #264a54;
+}
+
 .diagnostics-actions {
   display: flex;
   flex-wrap: wrap;

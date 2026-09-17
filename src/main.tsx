@@ -690,6 +690,7 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
   const [isScanningGames, setIsScanningGames] = useState(false);
   const [isUpdatingGames, setIsUpdatingGames] = useState(false);
   const [isExportingGames, setIsExportingGames] = useState(false);
+  const [isOpeningExportFolder, setIsOpeningExportFolder] = useState(false);
   const [isImportingGames, setIsImportingGames] = useState(false);
   const [isLoadingDiagnostics, setIsLoadingDiagnostics] = useState(false);
   const [isClassifyingGames, setIsClassifyingGames] = useState(false);
@@ -1716,6 +1717,26 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
     }
   }, [exportAdminPassword, games, isAdmin]);
 
+  const openExportFolder = useCallback(async () => {
+    if (!exportSummary || isOpeningExportFolder) {
+      return;
+    }
+
+    try {
+      setIsOpeningExportFolder(true);
+      setError(null);
+      await invoke("open_export_archive_folder", { archivePath: exportSummary.archivePath });
+      setStatus("Đã mở thư mục chứa file ZIP vừa xuất.");
+    } catch (err) {
+      const message = errorMessage(err);
+      console.error("[YeuTre debug] open export folder failed", err);
+      setError(message);
+      setStatus("Không thể mở thư mục chứa file ZIP.");
+    } finally {
+      setIsOpeningExportFolder(false);
+    }
+  }, [exportSummary, isOpeningExportFolder]);
+
   useEffect(() => {
     void loadGames();
     if (isAdmin) {
@@ -2739,6 +2760,14 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
                   {exportSummary.exportedFiles} file · {formatBytes(exportSummary.archiveBytes)}
                 </span>
                 <code>{exportSummary.archivePath}</code>
+                <button
+                  className="open-export-folder-button"
+                  disabled={isOpeningExportFolder}
+                  onClick={() => void openExportFolder()}
+                  type="button"
+                >
+                  {isOpeningExportFolder ? "Đang mở thư mục..." : "Mở thư mục chứa ZIP"}
+                </button>
               </div>
             ) : null}
           </div>

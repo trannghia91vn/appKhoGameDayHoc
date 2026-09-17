@@ -506,6 +506,11 @@ fn export_games_archive(app: AppHandle) -> Result<ExportGamesArchiveSummary, Str
 }
 
 #[tauri::command]
+fn open_export_archive_folder(app: AppHandle, archive_path: String) -> Result<(), String> {
+    games::export::open_export_archive_folder(&app, &archive_path)
+}
+
+#[tauri::command]
 fn import_games_archive(
     app: AppHandle,
     archive_path: String,
@@ -620,6 +625,7 @@ pub fn run() {
             install_games_from_paths,
             install_game_sources,
             export_games_archive,
+            open_export_archive_folder,
             import_games_archive
         ])
         .run(tauri::generate_context!())
