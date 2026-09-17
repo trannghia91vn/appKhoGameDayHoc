@@ -262,6 +262,64 @@ fn list_games(app: AppHandle) -> Result<Vec<GameManifest>, String> {
 }
 
 #[tauri::command]
+fn list_game_drafts(app: AppHandle) -> Result<Vec<games::builder::VocabGameDraft>, String> {
+    games::builder::list_drafts(&app)
+}
+#[tauri::command]
+fn create_game_draft(
+    app: AppHandle,
+    title: String,
+) -> Result<games::builder::VocabGameDraft, String> {
+    games::builder::create_draft(&app, title)
+}
+#[tauri::command]
+fn save_game_draft(
+    app: AppHandle,
+    draft: games::builder::VocabGameDraft,
+) -> Result<games::builder::VocabGameDraft, String> {
+    games::builder::save_draft(&app, draft)
+}
+#[tauri::command]
+fn delete_game_draft(app: AppHandle, draft_id: String) -> Result<(), String> {
+    games::builder::delete_draft(&app, &draft_id)
+}
+#[tauri::command]
+fn add_builder_image(
+    app: AppHandle,
+    draft_id: String,
+    source_path: String,
+) -> Result<games::builder::BuilderAsset, String> {
+    games::builder::add_image(&app, &draft_id, &source_path)
+}
+#[tauri::command]
+fn get_builder_image(
+    app: AppHandle,
+    draft_id: String,
+    image_path: String,
+) -> Result<Vec<u8>, String> {
+    games::builder::get_image(&app, &draft_id, &image_path)
+}
+#[tauri::command]
+async fn export_vocab_game(app: AppHandle, draft_id: String) -> Result<String, String> {
+    run_blocking_command("Xuat game tu vung", move || {
+        games::builder::export_game(&app, &draft_id)
+    })
+    .await
+}
+
+#[tauri::command]
+async fn upsert_vocab_builder_game(
+    app: AppHandle,
+    title: String,
+    html: Vec<u8>,
+) -> Result<String, String> {
+    run_blocking_command("Cap nhat game tu vung", move || {
+        games::builder::upsert_generated_html_game(&app, title, html)
+    })
+    .await
+}
+
+#[tauri::command]
 fn get_app_diagnostics(app: AppHandle) -> Result<AppDiagnostics, String> {
     let cache_status = games::catalog::catalog_cache_status(&app)?;
     let games = games::catalog::list_games(&app)?;
@@ -540,6 +598,14 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             last_deep_link_status,
             list_games,
+            list_game_drafts,
+            create_game_draft,
+            save_game_draft,
+            delete_game_draft,
+            add_builder_image,
+            get_builder_image,
+            export_vocab_game,
+            upsert_vocab_builder_game,
             get_app_diagnostics,
             open_deep_link,
             delete_games,

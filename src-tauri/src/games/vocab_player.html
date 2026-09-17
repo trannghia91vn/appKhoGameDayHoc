@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Game từ vựng</title><style>
+:root{font-family:system-ui,sans-serif;color:#f4f7ff;background:#171c35}*{box-sizing:border-box}
+body{margin:0;padding:24px;min-height:100vh}header{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:24px}
+h1{font-size:clamp(22px,3vw,34px);margin:0}button,select{font:inherit;border:1px solid #58648b;border-radius:8px;padding:10px 14px;background:#293250;color:white;cursor:pointer}
+button:hover{background:#3c4b75}button:disabled{opacity:.45;cursor:default}select{min-width:220px}
+#status{color:#bad8ff;min-height:24px}.board{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin:20px 0}
+.target{background:#222a49;border:2px solid #45557b;border-radius:8px;padding:12px;min-height:230px;display:grid;gap:10px}
+.target img{width:100%;height:150px;object-fit:contain;background:#fff;border-radius:6px}
+.dropzone{border:2px dashed #7d90c7;border-radius:7px;min-height:52px;padding:12px;text-align:center}
+.dropzone.over{border-color:#42d3a1;background:#263f43}.dropzone.correct{border-color:#42d3a1;background:#1e473f}
+.words{display:flex;flex-wrap:wrap;gap:10px;padding:16px;background:#202743;border-radius:8px;min-height:70px}
+.word{touch-action:none;user-select:none;background:#e7efff;color:#152547;border:0;border-radius:7px;font-weight:700;cursor:grab}
+.word.selected{outline:3px solid #40d6ab}.word.dragging{position:fixed;z-index:1000;pointer-events:none;box-shadow:0 12px 28px #0009}
+#summary{font-size:20px;font-weight:700;color:#48dfab}
+</style></head><body>
+<header><h1>Game từ vựng</h1><select id="lesson" aria-label="Chọn bài học"></select><button id="restart">Chơi lại</button></header>
+<p id="status"></p><div id="board" class="board"></div><div id="words" class="words"></div><p id="summary"></p>
+<script>
+const $=s=>document.querySelector(s);let lessons=[],current=null,selected=null,correct=0,mistakes=0;
+const shuffle=a=>a.sort(()=>Math.random()-.5);
+function render(){let l=lessons.find(x=>x.id===$('#lesson').value);current=l;selected=null;correct=0;mistakes=0;
+$('#board').replaceChildren();$('#words').replaceChildren();$('#summary').textContent='';$('#status').textContent='';
+if(!l)return;
+l.pairs.forEach(p=>{let box=document.createElement('div');box.className='target';let img=document.createElement('img');img.src=p.imagePath;img.alt='Hình cho từ cần ghép';let zone=document.createElement('div');zone.className='dropzone';zone.textContent='Thả từ vào đây';zone.dataset.answer=p.answer.trim().toLocaleLowerCase('vi');zone.addEventListener('click',()=>{if(selected)place(selected,zone)});
+zone.addEventListener('dragover',e=>{e.preventDefault();zone.classList.add('over')});zone.addEventListener('dragleave',()=>zone.classList.remove('over'));
+zone.addEventListener('drop',e=>{e.preventDefault();zone.classList.remove('over');let card=document.querySelector('[data-card-id="'+e.dataTransfer.getData('text/plain')+'"]');if(card)place(card,zone)});
+box.append(img,zone);$('#board').append(box)});
+shuffle([...l.pairs.map(p=>p.answer),...l.wrongs]).forEach((word,i)=>{let card=document.createElement('button');card.type='button';card.className='word';card.textContent=word;card.dataset.cardId=String(i);card.draggable=true;
+card.addEventListener('dragstart',e=>e.dataTransfer.setData('text/plain',String(i)));
+card.addEventListener('click',()=>{selected=card;document.querySelectorAll('.word').forEach(w=>w.classList.remove('selected'));card.classList.add('selected')});
+let origin=null;card.addEventListener('pointerdown',e=>{if(e.pointerType==='mouse')return;origin={x:e.clientX,y:e.clientY};card.setPointerCapture(e.pointerId)});
+card.addEventListener('pointermove',e=>{if(!origin)return;if(Math.hypot(e.clientX-origin.x,e.clientY-origin.y)>8){card.classList.add('dragging');card.style.left=e.clientX-40+'px';card.style.top=e.clientY-22+'px'}});
+card.addEventListener('pointerup',e=>{if(!origin)return;card.classList.remove('dragging');card.style.left='';card.style.top='';let hit=document.elementFromPoint(e.clientX,e.clientY)?.closest('.dropzone');if(hit)place(card,hit);origin=null});
+$('#words').append(card)})}
+function place(card,zone){if(zone.classList.contains('correct'))return;let value=card.textContent.trim().toLocaleLowerCase('vi');if(value!==zone.dataset.answer){mistakes++;$('#status').textContent='Chưa đúng, thử từ khác nhé.';return}
+zone.textContent=card.textContent;zone.classList.add('correct');card.remove();selected=null;correct++;$('#status').textContent='Chính xác!';
+if(correct===current.pairs.length){$('#summary').textContent='Hoàn thành! Đúng '+correct+'/'+current.pairs.length+' từ, '+mistakes+' lần thử chưa đúng.'}}
+$('#restart').addEventListener('click',render);$('#lesson').addEventListener('change',render);
+fetch('data/lessons.json').then(r=>{if(!r.ok)throw Error('Không tải được bài học');return r.json()}).then(data=>{lessons=data;$('#lesson').replaceChildren(...data.map(l=>{let o=document.createElement('option');o.value=l.id;o.textContent=l.name;return o}));render()}).catch(e=>$('#status').textContent=e.message);
+</script></body></html>

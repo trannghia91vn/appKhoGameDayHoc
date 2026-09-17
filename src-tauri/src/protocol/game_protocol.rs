@@ -141,7 +141,7 @@ fn is_html_resource(resource_path: &str) -> bool {
 
 static HTML_SHIM_CACHE: OnceLock<Mutex<HashMap<String, Vec<u8>>>> = OnceLock::new();
 const HTML_SHIM_CACHE_MAX_ENTRIES: usize = 128;
-const HTML_RUNTIME_SHIM_VERSION: u32 = 2;
+const HTML_RUNTIME_SHIM_VERSION: u32 = 3;
 
 fn maybe_inject_game_runtime_shims(game_id: &str, resource_path: &str, bytes: Vec<u8>) -> Vec<u8> {
     if !is_html_resource(resource_path) {
@@ -203,6 +203,21 @@ fn maybe_inject_game_runtime_shims(game_id: &str, resource_path: &str, bytes: Ve
   });
 
   window.addEventListener("DOMContentLoaded", function () {
+    var ownsPointerDrag = document.querySelector('meta[name="yeutre-drag-runtime"][content="native-pointer"]');
+    if (!ownsPointerDrag) {
+      try {
+        ownsPointerDrag = Array.prototype.some.call(document.scripts || [], function (script) {
+          return (script.textContent || "").indexOf('card.classList.add("drag-source")') !== -1;
+        });
+      } catch (_) {}
+    }
+    if (ownsPointerDrag) {
+      send("drag-drop", {
+        message: "Game-owned pointer drag detected; generic drag shim skipped"
+      });
+      return;
+    }
+
     var activeCard = null;
     var nativeDragCard = null;
     var ghost = null;

@@ -2358,3 +2358,38 @@ body:has(.app-shell.left-menu-hidden) {
   width: 100vw;
 }
 
+
+.builder-page{grid-column:1/-1;min-height:0;display:grid;grid-template-columns:220px minmax(420px,1fr) 280px;gap:14px}
+.builder-sidebar,.builder-editor,.builder-preview{background:#1e2545;border:1px solid #38446e;border-radius:8px;padding:16px;min-height:0;overflow:auto}
+.builder-sidebar header,.builder-toolbar,.editor-section-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.builder-sidebar h2,.builder-preview h3,.editor-section-head h3{margin:3px 0}.builder-sidebar>button{width:100%;text-align:left}
+.draft-item{display:grid;gap:4px;margin-top:8px}.draft-item span{font-size:12px;opacity:.7}.draft-item.active,.lesson-tabs .active{border-color:#7c8cff;background:#394378}
+.builder-editor{display:flex;flex-direction:column;gap:14px}.builder-toolbar>input{font-size:20px;font-weight:700;min-width:180px;flex:1}.builder-toolbar>div,.lesson-tabs{display:flex;gap:8px;flex-wrap:wrap}
+.publish-button{background:#248866!important;border-color:#35b98e!important}.lesson-editor{display:grid;gap:16px}.field-label{display:grid;gap:7px;font-weight:700}.field-label span{font-size:12px;font-weight:400;opacity:.7}
+.field-label input,.field-label textarea,.builder-toolbar input,.pair-card input{background:#141a33;color:#fff;border:1px solid #45527d;border-radius:6px;padding:10px;font:inherit}
+.pair-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}.pair-card{position:relative;display:grid;gap:8px;background:#171d38;border:1px solid #364269;border-radius:8px;padding:9px}
+.pair-card img,.pair-card>span{width:100%;height:120px;object-fit:contain;background:white;border-radius:5px}.pair-card>button{position:absolute;right:5px;top:5px;width:30px;height:30px;padding:0}
+.builder-preview{display:flex;flex-direction:column;gap:10px}.preview-row{display:grid;grid-template-columns:64px 1fr;align-items:center;gap:10px;background:#171d38;padding:8px;border-radius:7px}.preview-row img,.preview-row>span{width:64px;height:54px;object-fit:contain;background:white;border-radius:4px}
+.builder-empty{display:block;text-align:center;padding:60px}.builder-hint{padding:30px;text-align:center;border:1px dashed #58648b;border-radius:8px}
+@media(max-width:1100px){.builder-page{grid-template-columns:190px 1fr}.builder-preview{display:none}}@media(max-width:760px){.builder-page{grid-template-columns:1fr}.builder-sidebar{max-height:220px}}
+
+.builder-workspace{grid-column:1/-1;min-height:0;overflow:auto;background:#171d38;border:1px solid #364269;border-radius:8px}
+.builder-mainbar{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:16px 20px;background:#202846;border-bottom:1px solid #3a4770}.builder-mainbar input{font:700 22px/1.2 inherit;color:#fff;background:transparent;border:0;border-bottom:1px solid #59678f;padding:4px 0;max-width:420px;width:100%}.builder-mainbar .eyebrow{margin:0 0 4px}
+.builder-nav,.builder-project-strip,.lesson-picker,.teacher-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.builder-nav .active{background:#5265d8;border-color:#7183ed}.builder-project-strip{padding:10px 20px;background:#141a32;border-bottom:1px solid #303c64}.builder-project-strip>span{font-size:12px;color:#aeb9de}.builder-project-strip select,.lesson-picker select{background:#202846;color:#fff;border:1px solid #46547f;border-radius:6px;padding:9px;min-width:180px}
+.builder-content{padding:22px;display:grid;gap:18px}.builder-view-heading{display:flex;align-items:center;justify-content:space-between;gap:16px}.builder-view-heading h2{margin:3px 0}.lesson-menu-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px}.lesson-menu-card{background:#202846;border:1px solid #3a4770;border-radius:8px;padding:16px}.lesson-menu-card>span{font-size:12px;color:#91a1d0}.lesson-menu-card h3{margin:8px 0}.lesson-menu-card>div{display:flex;gap:8px;margin-top:14px}
+.teacher-form{display:grid;gap:20px}.editor-section-head p{margin:4px 0;color:#aeb9de}.pair-card>b{position:absolute;left:13px;top:13px;background:#17203d;padding:3px 7px;border-radius:4px}.teacher-actions{justify-content:flex-end;border-top:1px solid #364269;padding-top:16px}
+.game-preview{align-content:start}.preview-message{min-height:24px;color:#f4c95d}.preview-message.success{color:#42d3a1}.preview-board{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px}.preview-board article{display:grid;gap:10px;background:#202846;border:1px solid #3a4770;border-radius:8px;padding:12px}.preview-board img,.preview-board article>span{width:100%;height:160px;object-fit:contain;background:#fff;border-radius:6px}.drop-target{min-height:50px;border-style:dashed}.drop-target.correct{background:#236d58;border-color:#42d3a1}.preview-words{display:flex;gap:10px;flex-wrap:wrap;padding:16px;background:#202846;border-radius:8px}.preview-words button{background:#e9efff;color:#17203d;font-weight:700}.preview-words button.selected{outline:3px solid #42d3a1}
+@media(max-width:850px){.builder-mainbar{align-items:stretch;flex-direction:column}.builder-view-heading{align-items:stretch;flex-direction:column}.builder-content{padding:14px}}
+
+.html-builder-shell{grid-column:1/-1;min-height:0;position:relative;overflow:hidden;border:1px solid #cfe5f7;border-radius:8px;background:#eaf7ff}
+.html-builder-shell iframe{display:block;width:100%;height:100%;min-height:calc(100vh - 170px);border:0;background:#eaf7ff}
+.html-builder-progress{position:absolute;inset:12px 12px auto auto;z-index:10;padding:10px 14px;border-radius:8px;background:#153b66;color:#fff;font-weight:800;box-shadow:0 8px 24px rgba(21,59,102,.25)}
+.left-menu-hidden .html-builder-shell{display:none}
+@media(max-width:980px){.html-builder-shell iframe{min-height:820px}}
+
+.builder-left-panel{grid-column:1;grid-row:4;align-self:start;background:rgba(30,35,83,.62);border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:18px}.builder-left-panel h2{margin:4px 0 8px}.builder-left-panel span{color:var(--color-text-muted);font-size:.9rem}
+.exercise-view.builder-mode{gap:0;padding:0;grid-template-rows:minmax(0,1fr);background:#eaf7ff}
+.exercise-view.builder-mode .html-builder-shell{border:0;border-radius:15px;height:100%;min-height:0}
+.exercise-view.builder-mode .html-builder-shell iframe{height:100%;min-height:0}
+
+.builder-left-mark{font-size:54px;margin-top:18px;text-align:center}

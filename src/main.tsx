@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
+import GameBuilder from "./GameBuilder";
 import "./styles.css";
 
 const APP_NAME = "Kho game cô Trang Trần";
@@ -113,7 +114,7 @@ type ScanGamesSummary = {
   skippedFiles: number;
 };
 
-type Page = "library" | "settings";
+type Page = "library" | "builder" | "settings";
 type AccountRole = "admin" | "user";
 
 type DebugEntry = {
@@ -1741,7 +1742,7 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
       return;
     }
 
-    if (activePage === "settings") {
+    if (activePage !== "library") {
       setActivePage("library");
     }
     setIsLibrarySelectionMode(false);
@@ -2096,6 +2097,15 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
           </button>
           {isAdmin ? (
             <button
+              className={activePage === "builder" ? "topbar-tab active" : "topbar-tab"}
+              onClick={() => setActivePage("builder")}
+              type="button"
+            >
+              Làm game
+            </button>
+          ) : null}
+          {isAdmin ? (
+            <button
               className={activePage === "settings" ? "topbar-tab active" : "topbar-tab"}
               onClick={() => setActivePage("settings")}
               type="button"
@@ -2208,7 +2218,13 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
         </div>
       ) : null}
 
-      {activePage === "library" || !isAdmin ? (
+      {activePage === "builder" && isAdmin ? (
+        <section className="builder-left-panel">
+          <p className="eyebrow">Làm game</p>
+          <h2>Kho từ vựng</h2>
+          <div className="builder-left-mark" aria-hidden="true">🧠</div>
+        </section>
+      ) : activePage === "library" || !isAdmin ? (
         <section className="launcher-console">
           <div className="menu-zoom-content launcher-console-zoom">
             <div className="catalog-panel">
@@ -2818,7 +2834,25 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
         </section>
       )}
 
-      <section className="exercise-view" aria-label="Khung xem bài tập">
+      <section
+        className={activePage === "builder" && isAdmin ? "exercise-view builder-mode" : "exercise-view"}
+        aria-label={activePage === "builder" && isAdmin ? "Khung làm game" : "Khung xem bài tập"}
+      >
+        {activePage === "builder" && isAdmin ? (
+          <GameBuilder
+            onStatus={(message, builderError = null) => {
+              setStatus(message);
+              setError(builderError);
+            }}
+            onExported={(gameId) => {
+              void loadGames().then(() => {
+                setFocusedGameId(gameId);
+                setActivePage("library");
+              });
+            }}
+          />
+        ) : (
+          <>
         <div className="exercise-view-header">
           <div>
             <p className="eyebrow">Khung bài tập</p>
@@ -2852,6 +2886,8 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
             </div>
           )}
         </div>
+          </>
+        )}
       </section>
     </main>
   );

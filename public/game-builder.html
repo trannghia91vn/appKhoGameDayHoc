@@ -1,0 +1,1126 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="yeutre-drag-runtime" content="native-pointer" />
+  <title>Kho Từ Vựng - Game Kéo Thả</title>
+  <style>
+    :root{
+      --bg:#eaf7ff;
+      --card:#ffffff;
+      --ink:#153b66;
+      --muted:#5f7894;
+      --blue:#2476e8;
+      --blue2:#58a7ff;
+      --orange:#ff9a3d;
+      --red:#ff6b6b;
+      --green:#26b67a;
+      --line:#cfe5f7;
+      --shadow:0 8px 0 rgba(82,160,215,.16);
+      --radius:20px;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+      background:
+        radial-gradient(circle at top left,#fffde4 0,transparent 28%),
+        linear-gradient(180deg,#eefaff,#e7f5ff);
+      color:var(--ink);
+      min-height:100vh;
+    }
+    button,input{font:inherit}
+    button{cursor:pointer}
+    .hidden{display:none!important}
+
+    /* ===== Header ===== */
+    .topbar{
+      position:sticky; top:0; z-index:30;
+      background:rgba(255,255,255,.94);
+      backdrop-filter:blur(10px);
+      border-bottom:1px solid #dbeaf6;
+    }
+    .topbar-inner{
+      max-width:1200px; margin:auto; padding:10px 20px;
+      display:flex; align-items:center; justify-content:space-between; gap:18px;
+    }
+    .brand{font-weight:900;color:#2458bf;white-space:nowrap}
+    .nav{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+    .nav button{
+      border:0;background:transparent;color:#315b89;font-weight:800;
+      padding:10px 14px;border-radius:12px;
+    }
+    .nav button:hover,.nav button.active{background:var(--blue);color:white}
+
+    .wrap{max-width:1200px;margin:0 auto;padding:28px 20px 70px}
+    .page-head{
+      display:flex;align-items:flex-start;justify-content:space-between;gap:15px;margin-bottom:18px
+    }
+    h1,h2,h3,p{margin-top:0}
+    h1{font-size:28px;margin-bottom:5px}
+    .sub{color:var(--muted);font-weight:650}
+
+    .panel{
+      background:var(--card);
+      border:1px solid var(--line);
+      border-radius:var(--radius);
+      box-shadow:var(--shadow);
+      padding:20px;
+      margin-bottom:20px;
+    }
+    .panel-title{
+      display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px
+    }
+    .panel-title h2{font-size:20px;margin:0}
+    .panel-title p{font-size:13px;margin:3px 0 0;color:var(--muted);font-weight:650}
+
+    .label{display:block;font-size:13px;font-weight:900;margin-bottom:7px}
+    .input{
+      width:100%;border:1.5px solid #b9daf6;border-radius:13px;
+      padding:13px 14px;outline:none;color:#173f69;background:#fbfdff;
+    }
+    .input:focus{border-color:var(--blue2);box-shadow:0 0 0 3px rgba(36,118,232,.1)}
+
+    .btn{
+      border:0;border-radius:12px;padding:11px 16px;font-weight:900;color:#fff;
+      box-shadow:0 4px 0 rgba(0,0,0,.08);
+    }
+    .btn:active{transform:translateY(2px);box-shadow:0 2px 0 rgba(0,0,0,.08)}
+    .btn-blue{background:var(--blue)}
+    .btn-orange{background:var(--orange)}
+    .btn-green{background:var(--green)}
+    .btn-soft{background:#e8f3ff;color:#2465b1}
+    .btn-danger{background:#ffe8e8;color:#df5151}
+    .btn-lg{padding:14px 24px}
+
+    /* ===== Input dashboard ===== */
+    .pairs-grid{
+      display:grid;
+      grid-template-columns:repeat(auto-fit,minmax(260px,1fr));
+      gap:16px;
+    }
+    .pair-card{
+      position:relative;border:1.5px dashed #87c7ff;background:#f7fcff;
+      border-radius:16px;padding:12px;
+    }
+    .remove-mini{
+      position:absolute;right:8px;top:8px;width:28px;height:28px;border-radius:9px;
+      border:1px solid #ffc4c4;background:#fff0f0;color:#e65454;font-weight:900;z-index:2
+    }
+    .upload-box{
+      min-height:190px;border:1.5px dashed #45a2ff;border-radius:14px;
+      display:flex;align-items:center;justify-content:center;overflow:hidden;background:#eff9ff;
+      position:relative;margin-bottom:10px;
+    }
+    .upload-box input{position:absolute;inset:0;opacity:0;cursor:pointer}
+    .upload-placeholder{text-align:center;color:#2d73da;font-size:13px;font-weight:850;padding:20px}
+    .preview-img{width:100%;height:190px;object-fit:contain;background:white;display:block}
+    .wrong-row{display:grid;grid-template-columns:1fr 40px;gap:8px;margin-bottom:9px}
+    .savebar{display:flex;justify-content:flex-end;position:sticky;bottom:12px;z-index:20}
+
+    /* ===== Lesson menu ===== */
+    .lesson-grid{
+      display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:18px;
+    }
+    .lesson-card{
+      background:white;border:1px solid var(--line);border-radius:18px;overflow:hidden;
+      box-shadow:0 7px 0 rgba(82,160,215,.14);
+    }
+    .thumb{
+      height:150px;background:linear-gradient(135deg,#dff3ff,#fff8dd);
+      display:flex;align-items:center;justify-content:center;overflow:hidden;
+    }
+    .thumb img{width:100%;height:100%;object-fit:cover}
+    .thumb .emoji{font-size:54px}
+    .lesson-body{padding:15px}
+    .lesson-body h3{margin:0 0 10px;font-size:18px}
+    .lesson-actions{display:flex;gap:8px;flex-wrap:wrap}
+
+    /* ===== Gameplay ===== */
+    .game-shell{max-width:1200px;margin:auto;padding:20px}
+    .game-head{
+      display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:12px;margin-bottom:18px
+    }
+    .game-head .right{display:flex;justify-content:flex-end;gap:8px}
+    .game-title{text-align:center;font-size:24px;font-weight:950}
+    .targets{
+      display:grid;gap:18px;align-items:stretch;margin-bottom:24px;
+    }
+    .target-card{
+      background:white;border:1px solid var(--line);border-radius:18px;padding:12px;
+      box-shadow:var(--shadow);min-width:0;
+    }
+    .target-card img{
+      width:100%;height:230px;object-fit:contain;border-radius:14px;background:#f9fdff;
+    }
+    .dropzone{
+      margin-top:10px;min-height:64px;border:2px dashed #8cbdea;border-radius:13px;
+      display:flex;align-items:center;justify-content:center;padding:8px;
+      color:#7894af;font-weight:800;background:#f8fcff;
+    }
+    .dropzone.filled{border-style:solid;background:#eef8ff}
+    .dropzone.drag-over{border-color:#2476e8;background:#e2f2ff;box-shadow:0 0 0 4px rgba(36,118,232,.12)}
+    .choices-wrap{
+      background:white;border:1px solid var(--line);border-radius:20px;padding:18px;
+      box-shadow:var(--shadow);
+    }
+    .choices-title{font-weight:900;margin-bottom:12px}
+    .choices{display:flex;gap:12px;flex-wrap:wrap;justify-content:center}
+    .word-card{
+      border:1px solid #9bc8ee;background:linear-gradient(#fff,#eaf6ff);
+      color:#174c82;padding:12px 17px;border-radius:13px;font-weight:950;
+      box-shadow:0 5px 0 #c5e2f5;cursor:grab;user-select:none;touch-action:none;
+    }
+    .word-card.dragging{opacity:.45}
+    body.drag-active,
+    body.drag-active *{
+      -webkit-user-select:none!important;
+      user-select:none!important;
+      cursor:grabbing!important;
+    }
+    body.drag-active .dropzone{cursor:grabbing!important}
+    .word-card.drag-source{
+      opacity:.38;
+    }
+    .word-card.drag-ghost{
+      position:fixed;
+      z-index:1000;
+      pointer-events:none;
+      opacity:.78;
+      transform:scale(.94);
+      box-shadow:0 10px 22px rgba(21,59,102,.2);
+      cursor:grabbing;
+      margin:0;
+    }
+
+    .word-card.placed{box-shadow:none;cursor:grab}
+    .game-score-pill{
+      display:inline-flex;align-items:center;gap:6px;background:#fff5d9;color:#8a6618;
+      padding:8px 11px;border-radius:999px;font-weight:900;
+    }
+
+    /* ===== Scores ===== */
+    .score-list{display:grid;gap:10px}
+    .score-row{
+      display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:center;
+      background:white;border:1px solid var(--line);padding:13px;border-radius:14px
+    }
+    .score-row small{color:var(--muted)}
+
+    /* ===== Modal ===== */
+    .modal-backdrop{
+      position:fixed;inset:0;background:rgba(16,45,75,.48);z-index:99;
+      display:flex;align-items:center;justify-content:center;padding:20px
+    }
+    .modal{
+      width:min(520px,100%);background:white;border-radius:24px;padding:28px;
+      text-align:center;box-shadow:0 25px 70px rgba(0,0,0,.24)
+    }
+    .modal .cup{font-size:62px;margin-bottom:8px}
+    .modal h2{font-size:28px;margin-bottom:8px}
+    .big-score{font-size:48px;font-weight:950;color:var(--blue);margin:8px 0}
+    .modal-actions{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:18px}
+
+    .empty{
+      text-align:center;padding:42px 18px;color:var(--muted);
+      border:2px dashed #b9d8ee;border-radius:18px;background:#f9fdff
+    }
+
+
+    /* ===== Instant feedback ===== */
+    .dropzone.correct{
+      border-color:#39b779;
+      background:#eafaf2;
+      color:#168b57;
+      box-shadow:0 0 0 3px rgba(57,183,121,.12) inset;
+    }
+    .dropzone.wrong{
+      border-color:#f06b6b;
+      background:#fff0f0;
+      color:#d84646;
+      box-shadow:0 0 0 3px rgba(240,107,107,.11) inset;
+    }
+    .feedback-mark{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      width:30px;height:30px;
+      border-radius:50%;
+      font-size:18px;
+      font-weight:950;
+      flex:0 0 auto;
+    }
+    .feedback-mark.ok{background:#d7f6e6;color:#168b57}
+    .feedback-mark.bad{background:#ffdede;color:#d84646}
+    .drop-content{
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      gap:9px;
+      width:100%;
+    }
+    .word-card.correct-card{
+      border-color:#39b779;
+      background:linear-gradient(#f8fffb,#ddf7e9);
+      color:#158152;
+      box-shadow:0 5px 0 #bde9d0;
+    }
+    .word-card.wrong-card{
+      border-color:#f06b6b;
+      background:linear-gradient(#fffafa,#ffe5e5);
+      color:#c94040;
+      box-shadow:0 5px 0 #f4c3c3;
+    }
+    .shake{animation:shake .28s linear}
+    @keyframes shake{
+      0%,100%{transform:translateX(0)}
+      25%{transform:translateX(-6px)}
+      50%{transform:translateX(6px)}
+      75%{transform:translateX(-4px)}
+    }
+
+    @media (max-width:760px){
+      .topbar-inner{align-items:flex-start;flex-direction:column}
+      .nav{justify-content:flex-start}
+      .page-head{flex-direction:column}
+      .game-head{grid-template-columns:1fr;align-items:stretch}
+      .game-title{order:-1}
+      .game-head .right{justify-content:flex-start}
+      .target-card img{height:190px}
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar" id="mainTopbar">
+    <div class="topbar-inner">
+      <div class="brand">🧠 Kho từ vựng</div>
+      <nav class="nav">
+        <button data-view="menu">📚 Mục lục</button>
+        <button data-view="teacher">🖊️ Kho nhập liệu</button>
+        <button id="topExportHtmlBtn" style="background:#26b67a;color:white">🎮 Xuất Game</button>
+        <button data-view="game">🎮 Chơi game</button>
+        <button data-view="scores">🏆 Tổng kết điểm</button>
+      </nav>
+    </div>
+  </header>
+
+  <main id="app">
+    <!-- Teacher -->
+    <section id="teacherView" class="wrap hidden">
+      <div class="page-head">
+        <div>
+          <h1>Kho nhập liệu</h1>
+          <p class="sub">Tạo bài học mới bằng ảnh, từ đúng và các từ gây nhiễu.</p>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn btn-green" id="exportHtmlBtn">🎮 Xuất Game</button>
+          <button class="btn btn-blue" id="newLessonBtn">+ Bài học mới</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <label class="label">Tên bài học</label>
+        <input id="lessonName" class="input" placeholder="Ví dụ: Từ vựng trái cây" />
+      </div>
+
+      <div class="panel">
+        <div class="panel-title">
+          <div>
+            <h2>Ảnh & đáp án đúng</h2>
+            <p>Mỗi ảnh đi kèm một từ đúng. Có thể thêm hoặc xóa linh hoạt.</p>
+          </div>
+          <button class="btn btn-blue" id="addPairBtn">+ Thêm ảnh & từ đúng</button>
+        </div>
+        <div id="pairsGrid" class="pairs-grid"></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title">
+          <div>
+            <h2>Từ sai / từ gây nhiễu</h2>
+            <p>Các từ này sẽ được trộn cùng từ đúng khi chơi.</p>
+          </div>
+          <button class="btn btn-orange" id="addWrongBtn">+ Thêm từ sai</button>
+        </div>
+        <div id="wrongList"></div>
+      </div>
+
+      <div class="savebar">
+        <button class="btn btn-blue btn-lg" id="saveLessonBtn">LƯU BÀI HỌC</button>
+      </div>
+    </section>
+
+    <!-- Menu -->
+    <section id="menuView" class="wrap hidden">
+      <div class="page-head">
+        <div>
+          <h1>Mục lục bài học</h1>
+          <p class="sub">Chọn một bài để bắt đầu chơi.</p>
+        </div>
+      </div>
+      <div id="lessonGrid" class="lesson-grid"></div>
+    </section>
+
+    <!-- Game -->
+    <section id="gameView" class="hidden">
+      <div class="game-shell">
+        <div class="game-head">
+          <div>
+            <button class="btn btn-soft" id="backMenuBtn">⬅ Quay về Mục lục</button>
+          </div>
+          <div id="gameTitle" class="game-title">Bài học</div>
+          <div class="right">
+            <span id="liveScore" class="game-score-pill">⭐ 0 điểm</span>
+            <button class="btn btn-soft" id="soundToggleBtn" title="Bật/tắt âm thanh">🔊 Âm thanh</button>
+            <button class="btn btn-green" id="submitGameBtn">🏆 Nộp bài / Tổng kết</button>
+          </div>
+        </div>
+        <div id="targets" class="targets"></div>
+        <div class="choices-wrap">
+          <div class="choices-title">Kéo các thẻ chữ vào ảnh phù hợp</div>
+          <div id="choices" class="choices"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Scores -->
+    <section id="scoresView" class="wrap hidden">
+      <div class="page-head">
+        <div>
+          <h1>Tổng kết điểm</h1>
+          <p class="sub">Lịch sử các lượt làm bài trên thiết bị này.</p>
+        </div>
+        <button id="clearScoresBtn" class="btn btn-danger">Xóa lịch sử</button>
+      </div>
+      <div id="scoreList" class="score-list"></div>
+    </section>
+  </main>
+
+  <div id="resultModal" class="modal-backdrop hidden">
+    <div class="modal">
+      <div class="cup">🏆</div>
+      <h2 id="resultTitle">Hoàn thành!</h2>
+      <div id="resultScore" class="big-score">0/0</div>
+      <p id="resultText" class="sub"></p>
+      <div class="modal-actions">
+        <button class="btn btn-blue" id="playAgainBtn">🔄 Chơi lại</button>
+        <button class="btn btn-soft" id="resultMenuBtn">📚 Về Mục lục</button>
+      </div>
+    </div>
+  </div>
+
+  <script id="packedData" type="application/json">{ "packageId": "base", "lessons": [], "scores": [] }</script>
+
+  <script>
+    const LS_LESSONS = "vocab_drag_lessons_v1";
+    const LS_SCORES = "vocab_drag_scores_v1";
+
+    function readPackedData(){
+      try{
+        return JSON.parse(document.getElementById("packedData")?.textContent || '{"packageId":"base","lessons":[],"scores":[]}');
+      }catch(e){
+        return {packageId:"base",lessons:[],scores:[]};
+      }
+    }
+
+    function readStudentModeFlag(){
+      try{
+        return JSON.parse(document.getElementById("studentModeFlag")?.textContent || '{"studentMode":false}').studentMode === true;
+      }catch(e){
+        return false;
+      }
+    }
+
+    const packedData = readPackedData();
+    const IS_STUDENT_EXPORT = readStudentModeFlag();
+    const packageInitKey = "vocab_package_initialized_" + (packedData.packageId || "base");
+
+    let lessons = JSON.parse(localStorage.getItem(LS_LESSONS) || "[]");
+    let scores = JSON.parse(localStorage.getItem(LS_SCORES) || "[]");
+
+    if((packedData.lessons || []).length && !localStorage.getItem(packageInitKey)){
+      if(IS_STUDENT_EXPORT){
+        lessons = packedData.lessons || [];
+        scores = packedData.scores || [];
+      }else{
+        const byId = new Map(lessons.map(x => [x.id, x]));
+        (packedData.lessons || []).forEach(x => byId.set(x.id, x));
+        lessons = [...byId.values()];
+
+        const scoreIds = new Set(scores.map(x => x.id));
+        (packedData.scores || []).forEach(x => {
+          if(!scoreIds.has(x.id)) scores.push(x);
+        });
+      }
+      localStorage.setItem(LS_LESSONS, JSON.stringify(lessons));
+      localStorage.setItem(LS_SCORES, JSON.stringify(scores));
+      localStorage.setItem(packageInitKey, "1");
+    }
+    let editId = null;
+    let currentLesson = null;
+    let pairDraft = [];
+    let wrongDraft = [""];
+    let placements = {};
+    let submittedCurrentRound = false;
+    let soundEnabled = JSON.parse(localStorage.getItem("vocab_sound_enabled") ?? "true");
+    let audioCtx = null;
+
+    const $ = s => document.querySelector(s);
+    const $$ = s => [...document.querySelectorAll(s)];
+    const uid = () => crypto.randomUUID ? crypto.randomUUID() : Date.now()+"_"+Math.random().toString(16).slice(2);
+
+    function isStudentMode(){
+      return IS_STUDENT_EXPORT || !document.querySelector("#teacherView");
+    }
+
+    function persist(){
+      localStorage.setItem(LS_LESSONS, JSON.stringify(lessons));
+      localStorage.setItem(LS_SCORES, JSON.stringify(scores));
+    }
+
+    function setView(name){
+      if(name === "teacher" && isStudentMode()) name = "menu";
+      ["teacher","menu","game","scores"].forEach(v => {
+        const view = $("#"+v+"View");
+        if(view) view.classList.toggle("hidden", v !== name);
+      });
+      $$(".nav button[data-view]").forEach(b => b.classList.toggle("active", b.dataset.view === name));
+      if(name==="menu") renderMenu();
+      if(name==="scores") renderScores();
+      if(name==="teacher" && !isStudentMode() && pairDraft.length===0) resetTeacher();
+      if(name==="game" && !currentLesson){
+        if(lessons.length) startGame(lessons[0].id);
+        else setView("menu");
+      }
+      window.scrollTo({top:0,behavior:"smooth"});
+    }
+
+    // ===== Xuất 1 file HTML học sinh =====
+    function safeJsonForHtml(obj){
+      return JSON.stringify(obj)
+        .replace(/</g,"\\u003c")
+        .replace(/>/g,"\\u003e")
+        .replace(/&/g,"\\u0026");
+    }
+
+    function exportPortableHtml(){
+      if(!lessons.length){
+        alert("Chưa có bài học để xuất. Hãy tạo và lưu ít nhất 1 bài.");
+        return;
+      }
+
+      const clone = document.documentElement.cloneNode(true);
+      const packageId = "game_" + Date.now() + "_" + Math.random().toString(36).slice(2,8);
+      const packed = {
+        packageId,
+        exportedAt: new Date().toISOString(),
+        lessons,
+        scores
+      };
+
+      const dataNode = clone.querySelector("#packedData");
+      if(dataNode) dataNode.textContent = safeJsonForHtml(packed);
+
+      const oldModeTag = clone.querySelector("#studentModeFlag");
+      if(oldModeTag) oldModeTag.remove();
+      const modeTag = clone.ownerDocument.createElement("script");
+      modeTag.id = "studentModeFlag";
+      modeTag.type = "application/json";
+      modeTag.textContent = '{"studentMode":true}';
+      const packedNode = clone.querySelector("#packedData");
+      if(packedNode) packedNode.insertAdjacentElement("afterend", modeTag);
+
+      clone.querySelector("#teacherView")?.remove();
+      clone.querySelectorAll('.nav button[data-view="teacher"], #topExportHtmlBtn, #exportHtmlBtn, #clearScoresBtn')
+        .forEach(n => n.remove());
+      clone.querySelectorAll('[onclick*="teacher"]')
+        .forEach(n => n.removeAttribute("onclick"));
+
+      ["#lessonGrid", "#targets", "#choices", "#scoreList"].forEach(sel => {
+        const node = clone.querySelector(sel);
+        if(node) node.innerHTML = "";
+      });
+
+      clone.querySelector("#resultModal")?.classList.add("hidden");
+      ["game", "scores"].forEach(v => clone.querySelector("#"+v+"View")?.classList.add("hidden"));
+      clone.querySelector("#menuView")?.classList.remove("hidden");
+      clone.querySelectorAll(".nav button[data-view]").forEach(b => {
+        b.classList.toggle("active", b.dataset.view === "menu");
+      });
+
+      const style = clone.ownerDocument.createElement("style");
+      style.textContent = `
+        #teacherView,
+        .nav button[data-view="teacher"],
+        #topExportHtmlBtn,
+        #exportHtmlBtn,
+        #clearScoresBtn,
+        .lesson-actions .edit,
+        .lesson-actions .del { display:none !important; }
+      `;
+      clone.querySelector("head")?.appendChild(style);
+
+      const output = "<!doctype html>\n" + clone.outerHTML;
+      const gameNameSource = lessons[0]?.name || "game-tu-vung";
+      const gameName = gameNameSource
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g,"")
+        .replace(/đ/g,"d")
+        .replace(/Đ/g,"D")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g,"-")
+        .replace(/^-+|-+$/g,"")
+        .slice(0,48) || "game-tu-vung";
+      const exportStamp = new Date().toISOString()
+        .replace(/[-:TZ.]/g,"")
+        .slice(0,17);
+      const fileName = gameName + "-" + exportStamp + ".html";
+      if(window.parent !== window){
+        window.parent.postMessage({
+          source:"yeutre-vocab-builder",
+          type:"export",
+          html:output,
+          fileName,
+          title:"Kho từ vựng"
+        },"*");
+        return;
+      }
+      const blob = new Blob([output], {type:"text/html;charset=utf-8"});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1500);
+
+      alert("Đã xuất game học sinh. File xuất đã bỏ Kho nhập liệu/Sửa/Xóa và giữ dữ liệu bài học.");
+    }
+
+    // ===== Teacher dashboard =====
+    function resetTeacher(){
+      editId = null;
+      $("#lessonName").value = "";
+      pairDraft = [{id:uid(), image:"", answer:""}];
+      wrongDraft = [""];
+      renderDraft();
+    }
+
+    function renderDraft(){
+      const grid = $("#pairsGrid");
+      grid.innerHTML = "";
+      pairDraft.forEach((p,i)=>{
+        const el = document.createElement("div");
+        el.className="pair-card";
+        el.innerHTML = `
+          ${pairDraft.length>1 ? `<button class="remove-mini" title="Xóa">×</button>`:""}
+          <div class="upload-box">
+            ${p.image
+              ? `<img class="preview-img" src="${p.image}" alt="Ảnh từ vựng">`
+              : `<div class="upload-placeholder">🖼️<br>Chạm để tải ảnh<br><small>PNG, JPG, WEBP</small></div>`}
+            <input type="file" accept="image/png,image/jpeg,image/webp">
+          </div>
+          <label class="label">Từ đúng</label>
+          <input class="input answer-input" value="${escapeHtml(p.answer)}" placeholder="Ví dụ: Quả táo">
+        `;
+        const fileInput = el.querySelector('input[type="file"]');
+        fileInput.addEventListener("change",e=>{
+          const f=e.target.files[0];
+          if(!f) return;
+          if(f.size > 3*1024*1024){
+            alert("Ảnh hơi lớn. Vui lòng chọn ảnh dưới 3MB.");
+            return;
+          }
+          const reader = new FileReader();
+          reader.onload = ()=>{ pairDraft[i].image=reader.result; renderDraft(); };
+          reader.readAsDataURL(f);
+        });
+        el.querySelector(".answer-input").addEventListener("input",e=>pairDraft[i].answer=e.target.value);
+        const rm=el.querySelector(".remove-mini");
+        if(rm) rm.addEventListener("click",()=>{pairDraft.splice(i,1);renderDraft()});
+        grid.appendChild(el);
+      });
+
+      const wrong = $("#wrongList");
+      wrong.innerHTML="";
+      wrongDraft.forEach((w,i)=>{
+        const row=document.createElement("div");
+        row.className="wrong-row";
+        row.innerHTML=`<input class="input" value="${escapeHtml(w)}" placeholder="Từ sai"><button class="remove-mini" style="position:static">×</button>`;
+        row.querySelector("input").addEventListener("input",e=>wrongDraft[i]=e.target.value);
+        row.querySelector("button").addEventListener("click",()=>{
+          if(wrongDraft.length===1) wrongDraft[0]="";
+          else wrongDraft.splice(i,1);
+          renderDraft();
+        });
+        wrong.appendChild(row);
+      });
+    }
+
+    if(!isStudentMode()){
+      const exportHtmlBtn = $("#exportHtmlBtn");
+      const topExportHtmlBtn = $("#topExportHtmlBtn");
+      if(exportHtmlBtn) exportHtmlBtn.onclick = exportPortableHtml;
+      if(topExportHtmlBtn) topExportHtmlBtn.onclick = exportPortableHtml;
+
+      $("#addPairBtn").onclick=()=>{pairDraft.push({id:uid(),image:"",answer:""});renderDraft()};
+      $("#addWrongBtn").onclick=()=>{wrongDraft.push("");renderDraft()};
+      $("#newLessonBtn").onclick=resetTeacher;
+
+      $("#saveLessonBtn").onclick=()=>{
+        const name=$("#lessonName").value.trim();
+        const pairs=pairDraft
+          .map(p=>({...p,answer:p.answer.trim()}))
+          .filter(p=>p.image && p.answer);
+        const wrongs=wrongDraft.map(x=>x.trim()).filter(Boolean);
+
+        if(!name){alert("Vui lòng nhập tên bài học.");return}
+        if(!pairs.length){alert("Cần ít nhất 1 ảnh và 1 từ đúng.");return}
+
+        const lesson={
+          id: editId || uid(),
+          name,
+          pairs,
+          wrongs,
+          updatedAt:new Date().toISOString()
+        };
+
+        const idx=lessons.findIndex(x=>x.id===lesson.id);
+        if(idx>=0) lessons[idx]=lesson; else lessons.unshift(lesson);
+        persist();
+        alert("Đã lưu bài học!");
+        resetTeacher();
+        setView("menu");
+      };
+    }
+
+    function editLesson(id){
+      if(isStudentMode()) return;
+      const l=lessons.find(x=>x.id===id); if(!l)return;
+      editId=id;
+      $("#lessonName").value=l.name;
+      pairDraft=l.pairs.map(x=>({...x}));
+      wrongDraft=l.wrongs.length?[...l.wrongs]:[""];
+      renderDraft();
+      setView("teacher");
+    }
+
+    function deleteLesson(id){
+      if(isStudentMode()) return;
+      if(!confirm("Xóa bài học này?")) return;
+      lessons=lessons.filter(x=>x.id!==id);
+      if(currentLesson?.id===id) currentLesson=null;
+      persist(); renderMenu();
+    }
+
+    // ===== Menu =====
+    function renderMenu(){
+      const grid=$("#lessonGrid");
+      const studentMode = isStudentMode();
+      if(!lessons.length){
+        grid.innerHTML=`<div class="empty" style="grid-column:1/-1">
+          <div style="font-size:46px">📚</div>
+          <h3>Chưa có bài học nào</h3>
+          <p>${studentMode ? "File game này chưa có bài học." : "Hãy vào <b>Kho nhập liệu</b> để tạo bài đầu tiên."}</p>
+          ${studentMode ? "" : `<button class="btn btn-blue" onclick="setView('teacher')">+ Tạo bài học</button>`}
+        </div>`;
+        return;
+      }
+      grid.innerHTML="";
+      lessons.forEach(l=>{
+        const card=document.createElement("article");
+        card.className="lesson-card";
+        const img=l.pairs[0]?.image;
+        const adminActions = studentMode ? "" : `
+              <button class="btn btn-soft edit">✏️ Sửa</button>
+              <button class="btn btn-danger del">🗑️ Xóa</button>`;
+        card.innerHTML=`
+          <div class="thumb">${img?`<img src="${img}" alt="">`:`<div class="emoji">🧠</div>`}</div>
+          <div class="lesson-body">
+            <h3>${escapeHtml(l.name)}</h3>
+            <div class="lesson-actions">
+              <button class="btn btn-blue play">▶ Chơi ngay</button>${adminActions}
+            </div>
+          </div>`;
+        card.querySelector(".play").onclick=()=>startGame(l.id);
+        const editBtn = card.querySelector(".edit");
+        const delBtn = card.querySelector(".del");
+        if(editBtn) editBtn.onclick=()=>editLesson(l.id);
+        if(delBtn) delBtn.onclick=()=>deleteLesson(l.id);
+        grid.appendChild(card);
+      });
+    }
+
+
+    // ===== Sound effects =====
+    function ensureAudio(){
+      if(!audioCtx){
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if(AC) audioCtx = new AC();
+      }
+      if(audioCtx && audioCtx.state === "suspended") audioCtx.resume();
+      return audioCtx;
+    }
+
+    function tone(freq, duration=.12, type="sine", gain=.05, delay=0){
+      if(!soundEnabled) return;
+      const ctx = ensureAudio();
+      if(!ctx) return;
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = type;
+      osc.frequency.value = freq;
+      g.gain.setValueAtTime(0.0001, ctx.currentTime + delay);
+      g.gain.exponentialRampToValueAtTime(gain, ctx.currentTime + delay + .01);
+      g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + delay + duration);
+      osc.connect(g).connect(ctx.destination);
+      osc.start(ctx.currentTime + delay);
+      osc.stop(ctx.currentTime + delay + duration + .03);
+    }
+
+    function playCorrectSound(){
+      tone(523.25,.10,"sine",.055,0);
+      tone(659.25,.11,"sine",.055,.08);
+      tone(783.99,.14,"sine",.055,.16);
+    }
+
+    function playWrongSound(){
+      tone(210,.10,"sawtooth",.035,0);
+      tone(155,.16,"sawtooth",.03,.08);
+    }
+
+    function playFinishSound(){
+      tone(523.25,.10,"triangle",.05,0);
+      tone(659.25,.10,"triangle",.05,.10);
+      tone(783.99,.10,"triangle",.05,.20);
+      tone(1046.5,.20,"triangle",.055,.30);
+    }
+
+    function updateSoundButton(){
+      const btn = $("#soundToggleBtn");
+      if(btn) btn.textContent = soundEnabled ? "🔊 Âm thanh" : "🔇 Tắt tiếng";
+    }
+
+    // ===== Game =====
+    function startGame(id){
+      currentLesson=lessons.find(x=>x.id===id);
+      if(!currentLesson)return;
+      placements={};
+      submittedCurrentRound=false;
+      $("#gameTitle").textContent=currentLesson.name;
+      $("#liveScore").textContent="⭐ 0 điểm";
+
+      const count=currentLesson.pairs.length;
+      const cols=count===1?1:count===2?2:Math.min(3,count);
+      $("#targets").style.gridTemplateColumns=`repeat(${cols}, minmax(0,1fr))`;
+      if(window.innerWidth<760) $("#targets").style.gridTemplateColumns="1fr";
+
+      const targets=$("#targets");
+      targets.innerHTML="";
+      currentLesson.pairs.forEach((p,i)=>{
+        const card=document.createElement("div");
+        card.className="target-card";
+        card.innerHTML=`
+          <img src="${p.image}" alt="Ảnh câu ${i+1}">
+          <div class="dropzone" data-target="${p.id}">Thả từ vào đây</div>`;
+        targets.appendChild(card);
+      });
+
+      const allWords = [
+        ...currentLesson.pairs.map(p=>({id:"correct_"+p.id,text:p.answer})),
+        ...currentLesson.wrongs.map((w,i)=>({id:"wrong_"+i+"_"+uid(),text:w}))
+      ];
+      shuffle(allWords);
+      const choices=$("#choices");
+      choices.innerHTML="";
+      allWords.forEach(w=>choices.appendChild(makeWordCard(w)));
+
+      setupDnD();
+      setView("game");
+    }
+
+    function makeWordCard(w){
+      const el=document.createElement("div");
+      el.className="word-card";
+      el.draggable=true;
+      el.dataset.wordId=w.id;
+      el.dataset.wordText=w.text;
+      el.textContent=w.text;
+      return el;
+    }
+
+    function setupDnD(){
+      let selectedWord=null;
+
+      function clearSelection(){
+        $$(".word-card").forEach(card=>card.style.outline="");
+        selectedWord=null;
+        window.__selectedWord=null;
+      }
+
+      $$(".word-card").forEach(card=>{
+        // WKWebView does not consistently dispatch HTML5 drop for draggable divs.
+        // Pointer Events are used for mouse, trackpad and touch.
+        card.draggable=false;
+        let drag=null;
+
+        card.addEventListener("pointerdown",e=>{
+          if(e.button!==undefined && e.button!==0) return;
+          e.preventDefault();
+          const rect=card.getBoundingClientRect();
+          drag={
+            id:e.pointerId,
+            startX:e.clientX,
+            startY:e.clientY,
+            offsetX:e.clientX-rect.left,
+            offsetY:e.clientY-rect.top,
+            width:rect.width,
+            active:false
+          };
+          card.setPointerCapture?.(e.pointerId);
+        });
+
+        card.addEventListener("pointermove",e=>{
+          if(!drag || drag.id!==e.pointerId) return;
+          e.preventDefault();
+          if(!drag.active && Math.hypot(e.clientX-drag.startX,e.clientY-drag.startY)<5) return;
+          if(!drag.active){
+            drag.active=true;
+            document.body.classList.add("drag-active");
+            window.getSelection?.().removeAllRanges();
+            card.classList.add("drag-source");
+            drag.ghost=card.cloneNode(true);
+            drag.ghost.classList.remove("drag-source","placed","correct-card","wrong-card");
+            drag.ghost.classList.add("drag-ghost");
+            drag.ghost.style.width=drag.width+"px";
+            document.body.appendChild(drag.ghost);
+          }
+          drag.ghost.style.left=(e.clientX-drag.offsetX)+"px";
+          drag.ghost.style.top=(e.clientY-drag.offsetY)+"px";
+        });
+
+        card.addEventListener("pointerup",e=>{
+          if(!drag || drag.id!==e.pointerId) return;
+          const wasDragging=drag.active;
+          card.releasePointerCapture?.(e.pointerId);
+          const zone=wasDragging
+            ? document.elementFromPoint(e.clientX,e.clientY)?.closest(".dropzone")
+            : null;
+          card.classList.remove("drag-source");
+          document.body.classList.remove("drag-active");
+          window.getSelection?.().removeAllRanges();
+          drag.ghost?.remove();
+          if(zone){
+            placeCard(card,zone);
+            clearSelection();
+          }else if(!wasDragging){
+            clearSelection();
+            card.style.outline="3px solid #ffd267";
+            selectedWord=card;
+            window.__selectedWord=card;
+          }
+          drag=null;
+        });
+
+        card.addEventListener("pointercancel",()=>{
+          card.classList.remove("drag-source");
+          document.body.classList.remove("drag-active");
+          window.getSelection?.().removeAllRanges();
+          drag?.ghost?.remove();
+          drag=null;
+        });
+      });
+
+      $$(".dropzone").forEach(zone=>{
+        zone.addEventListener("pointerenter",()=>{
+          if(document.querySelector(".word-card.drag-source")) zone.classList.add("drag-over");
+        });
+        zone.addEventListener("pointerleave",()=>zone.classList.remove("drag-over"));
+        zone.addEventListener("click",()=>{
+          const card=selectedWord || window.__selectedWord;
+          if(card){
+            placeCard(card,zone);
+            clearSelection();
+          }
+        });
+      });
+    }
+
+    function placeCard(card,zone){
+      // Return existing card in target to choices
+      const existing=zone.querySelector(".word-card");
+      if(existing){
+        existing.classList.remove("correct-card","wrong-card");
+        $("#choices").appendChild(existing);
+      }
+
+      // Clear previous target if this card came from another target
+      const old=card.closest(".dropzone");
+      if(old){
+        delete placements[old.dataset.target];
+        old.classList.remove("filled","correct","wrong","shake");
+        old.textContent="Thả từ vào đây";
+      }
+
+      zone.innerHTML="";
+      zone.appendChild(card);
+      card.classList.add("placed");
+      card.classList.remove("correct-card","wrong-card");
+      zone.classList.add("filled");
+      zone.classList.remove("correct","wrong","shake");
+
+      placements[zone.dataset.target]={
+        wordId:card.dataset.wordId,
+        text:card.dataset.wordText
+      };
+
+      const pair = currentLesson.pairs.find(p=>p.id===zone.dataset.target);
+      const isCorrect = pair &&
+        card.dataset.wordText.trim().toLocaleLowerCase("vi") ===
+        pair.answer.trim().toLocaleLowerCase("vi");
+
+      const wrapper=document.createElement("span");
+      wrapper.className="drop-content";
+      const mark=document.createElement("span");
+      mark.className="feedback-mark " + (isCorrect ? "ok" : "bad");
+      mark.textContent=isCorrect ? "✓" : "✕";
+
+      // Keep the draggable card and add the feedback icon beside it
+      zone.innerHTML="";
+      wrapper.appendChild(card);
+      wrapper.appendChild(mark);
+      zone.appendChild(wrapper);
+
+      if(isCorrect){
+        zone.classList.add("correct");
+        card.classList.add("correct-card");
+        playCorrectSound();
+      }else{
+        zone.classList.add("wrong","shake");
+        card.classList.add("wrong-card");
+        playWrongSound();
+        setTimeout(()=>zone.classList.remove("shake"),320);
+      }
+
+      updateLiveScore();
+
+      // Auto-summary when every image has a card
+      if(Object.keys(placements).length===currentLesson.pairs.length){
+        setTimeout(()=>finishGame(true),500);
+      }
+    }
+
+    function calculateScore(){
+      if(!currentLesson) return {correct:0,total:0};
+      let correct=0;
+      currentLesson.pairs.forEach(p=>{
+        const placed=placements[p.id];
+        if(placed && placed.text.trim().toLocaleLowerCase("vi")===p.answer.trim().toLocaleLowerCase("vi")) correct++;
+      });
+      return {correct,total:currentLesson.pairs.length};
+    }
+
+    function updateLiveScore(){
+      const s=calculateScore();
+      $("#liveScore").textContent=`⭐ ${s.correct} điểm`;
+    }
+
+    function finishGame(auto=false){
+      if(!currentLesson) return;
+      const s=calculateScore();
+      const pct=s.total?Math.round(s.correct/s.total*100):0;
+
+      $("#resultScore").textContent=`${s.correct}/${s.total}`;
+      $("#resultTitle").textContent=pct===100?"Xuất sắc! 🎉":pct>=70?"Làm tốt lắm! 👏":"Cố gắng thêm nhé! 💪";
+      $("#resultText").textContent=`Bạn trả lời đúng ${s.correct} trên ${s.total} câu, đạt ${pct}%.`;
+      $("#resultModal").classList.remove("hidden");
+      playFinishSound();
+
+      if(!submittedCurrentRound){
+        scores.unshift({
+          id:uid(),
+          lessonId:currentLesson.id,
+          lessonName:currentLesson.name,
+          correct:s.correct,total:s.total,pct,
+          at:new Date().toISOString()
+        });
+        submittedCurrentRound=true;
+        persist();
+      }
+    }
+
+    $("#soundToggleBtn").onclick=()=>{
+      soundEnabled=!soundEnabled;
+      localStorage.setItem("vocab_sound_enabled", JSON.stringify(soundEnabled));
+      updateSoundButton();
+      if(soundEnabled) playCorrectSound();
+    };
+    $("#submitGameBtn").onclick=()=>finishGame(false);
+    $("#backMenuBtn").onclick=()=>setView("menu");
+    $("#playAgainBtn").onclick=()=>{$("#resultModal").classList.add("hidden");startGame(currentLesson.id)};
+    $("#resultMenuBtn").onclick=()=>{$("#resultModal").classList.add("hidden");setView("menu")};
+
+    // ===== Scores =====
+    function renderScores(){
+      const box=$("#scoreList");
+      if(!scores.length){
+        box.innerHTML=`<div class="empty"><div style="font-size:46px">🏆</div><h3>Chưa có lượt chơi nào</h3></div>`;
+        return;
+      }
+      box.innerHTML="";
+      scores.forEach(s=>{
+        const row=document.createElement("div");
+        row.className="score-row";
+        row.innerHTML=`
+          <div><b>${escapeHtml(s.lessonName)}</b><br><small>${new Date(s.at).toLocaleString("vi-VN")}</small></div>
+          <b>${s.correct}/${s.total}</b>
+          <span class="game-score-pill">${s.pct}%</span>`;
+        box.appendChild(row);
+      });
+    }
+
+    const clearScoresBtn = $("#clearScoresBtn");
+    if(clearScoresBtn && !isStudentMode()){
+      clearScoresBtn.onclick=()=>{
+        if(confirm("Xóa toàn bộ lịch sử điểm?")){
+          scores=[];persist();renderScores();
+        }
+      };
+    }else if(clearScoresBtn){
+      clearScoresBtn.remove();
+    }
+
+    // ===== Helpers =====
+    function shuffle(arr){
+      for(let i=arr.length-1;i>0;i--){
+        const j=Math.floor(Math.random()*(i+1));
+        [arr[i],arr[j]]=[arr[j],arr[i]];
+      }
+      return arr;
+    }
+    function escapeHtml(str=""){
+      return str.replace(/[&<>"']/g,m=>({
+        "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
+      })[m]);
+    }
+
+    $$(".nav button[data-view]").forEach(b=>b.addEventListener("click",()=>setView(b.dataset.view)));
+
+    window.addEventListener("resize",()=>{
+      if(currentLesson && !$("#gameView").classList.contains("hidden")){
+        const count=currentLesson.pairs.length;
+        $("#targets").style.gridTemplateColumns=window.innerWidth<760
+          ? "1fr"
+          : `repeat(${count===1?1:count===2?2:Math.min(3,count)}, minmax(0,1fr))`;
+      }
+    });
+
+    // First run
+    if(!isStudentMode()) resetTeacher();
+    updateSoundButton();
+    setView("menu");
+  </script>
+</body>
+</html>
