@@ -1,6 +1,6 @@
 [package]
 name = "yeutre-game-launcher"
-version = "0.1.9"
+version = "0.1.10"
 description = "PoC desktop launcher for YeuTre local HTML games"
 authors = ["YeuTre"]
 edition = "2021"

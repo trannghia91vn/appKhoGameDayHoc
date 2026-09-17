@@ -153,10 +153,12 @@ type GameRuntimeMessage = {
 const isTauriRuntime = "__TAURI_INTERNALS__" in window;
 const ADMIN_PASSWORD_STORAGE_KEY = "yeutre.gameLauncher.adminPasswordHash.v1";
 const ADMIN_PASSWORD_SALT = "yeutre-game-launcher-admin-v1";
-const APP_ZOOM_STORAGE_KEY = "yeutre.appZoom.v1";
 const MIN_APP_ZOOM = 0.8;
 const MAX_APP_ZOOM = 1.3;
 const APP_ZOOM_STEP = 0.1;
+const SIDEBAR_MIN_WIDTH = 400;
+const SIDEBAR_MAX_WIDTH = 480;
+const SIDEBAR_DRAWER_WIDTH = 420;
 const MAX_BROWSER_SCAN_FILES = 2_000;
 const MAX_BROWSER_HTML_FILE_BYTES = 80 * 1024 * 1024;
 const VIRTUAL_GAME_LIST_THRESHOLD = 150;
@@ -184,14 +186,6 @@ function clampAppZoom(value: number) {
 
 function normalizeAppZoom(value: number) {
   return Number(clampAppZoom(value).toFixed(2));
-}
-
-function readSavedAppZoom() {
-  try {
-    return normalizeAppZoom(Number(window.localStorage.getItem(APP_ZOOM_STORAGE_KEY)));
-  } catch {
-    return 1;
-  }
 }
 
 function htmlSourcePathFiles(files: File[]) {
@@ -669,7 +663,7 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
   const [selectedLibraryGameIds, setSelectedLibraryGameIds] = useState<string[]>([]);
   const [isLibrarySelectionMode, setIsLibrarySelectionMode] = useState(false);
   const [isLeftMenuVisible, setIsLeftMenuVisible] = useState(true);
-  const [appZoom, setAppZoom] = useState(readSavedAppZoom);
+  const [appZoom, setAppZoom] = useState(1);
   const [isDeletingGames, setIsDeletingGames] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
   const [configuredCategories, setConfiguredCategories] = useState<Category[]>([]);
@@ -724,14 +718,6 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
   const clearDebug = useCallback(() => {
     setDebugEntries([]);
   }, []);
-
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(APP_ZOOM_STORAGE_KEY, appZoom.toFixed(2));
-    } catch (err) {
-      console.warn("[YeuTre debug] save app zoom failed", err);
-    }
-  }, [appZoom]);
 
   const changeAppZoom = useCallback((direction: -1 | 1) => {
     setAppZoom((current) => normalizeAppZoom(current + direction * APP_ZOOM_STEP));
@@ -2062,9 +2048,15 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
     isLeftMenuVisible ? "" : "left-menu-hidden",
     isLeftMenuVisible ? "left-menu-minimal" : "",
   ].filter(Boolean).join(" ");
+  const sidebarMinWidth = Math.min(500, Math.max(380, Math.round(SIDEBAR_MIN_WIDTH * appZoom)));
+  const sidebarMaxWidth = Math.min(540, Math.max(440, Math.round(SIDEBAR_MAX_WIDTH * appZoom)));
+  const sidebarDrawerWidth = Math.min(540, Math.max(380, Math.round(SIDEBAR_DRAWER_WIDTH * appZoom)));
   const appShellStyle = {
     "--menu-zoom": appZoom,
     "--menu-zoom-inverse": Number((1 / appZoom).toFixed(4)),
+    "--sidebar-min-width": `${sidebarMinWidth}px`,
+    "--sidebar-max-width": `${sidebarMaxWidth}px`,
+    "--sidebar-drawer-width": `${sidebarDrawerWidth}px`,
   } as React.CSSProperties;
   const appZoomPercent = Math.round(appZoom * 100);
 
@@ -2392,11 +2384,18 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
                   <div className="deep-link-panel">
                     <div className="deep-link-heading">
                       <span>Deep link PowerPoint</span>
-                      <button className="copy-link-button" onClick={() => void copySelectedDeepLink()} type="button">
+                    </div>
+                    <div className="deep-link-content">
+                      <code>{selectedDeepLink}</code>
+                      <button
+                        className="copy-link-button"
+                        onClick={() => void copySelectedDeepLink()}
+                        title="Sao chép deep link PowerPoint"
+                        type="button"
+                      >
                         Copy
                       </button>
                     </div>
-                    <code>{selectedDeepLink}</code>
                   </div>
                 </>
               ) : (
