@@ -608,7 +608,7 @@
       renderDraft();
     }
 
-    const MAX_IMAGE_FILE_SIZE = 3 * 1024 * 1024;
+    const MAX_IMAGE_FILE_SIZE = 50 * 1024 * 1024;
     const MAX_IMAGE_EDGE = 1200;
     const WEBP_QUALITY = 0.82;
     const SUPPORTED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
@@ -693,7 +693,7 @@
           const f=e.target.files[0];
           if(!f) return;
           if(f.size > MAX_IMAGE_FILE_SIZE){
-            alert("Ảnh hơi lớn. Vui lòng chọn ảnh dưới 3MB.");
+            alert("Ảnh hơi lớn. Vui lòng chọn ảnh dưới 50 MB.");
             e.target.value = "";
             return;
           }

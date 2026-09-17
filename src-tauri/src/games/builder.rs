@@ -202,8 +202,8 @@ pub fn add_image<R: Runtime>(
     }
     let path = Path::new(source);
     let bytes = fs::read(path).map_err(|e| format!("Không đọc được ảnh: {e}"))?;
-    if bytes.len() > 3 * 1024 * 1024 {
-        return Err("Ảnh vượt quá 3 MB.".into());
+    if bytes.len() > 50 * 1024 * 1024 {
+        return Err("Ảnh vượt quá 50 MB.".into());
     }
     let ext = path
         .extension()

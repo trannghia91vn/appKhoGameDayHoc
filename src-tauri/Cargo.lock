@@ -5284,7 +5284,7 @@ dependencies = [
 
 [[package]]
 name = "yeutre-game-launcher"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "http",
  "log",
