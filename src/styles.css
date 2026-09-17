@@ -324,20 +324,22 @@ code {
 }
 
 .menu-visibility-switch {
+  background: rgba(30, 35, 83, 0.76);
+  border: 1px solid rgba(255, 255, 255, 0.14);
   color: #ffffff;
   cursor: pointer;
   font-size: 0.74rem;
   font-weight: 900;
   gap: 8px;
+  min-width: 0;
+  padding: 7px 9px;
   text-transform: uppercase;
   white-space: nowrap;
 }
 
-.menu-visibility-switch input {
-  block-size: 1px;
-  inline-size: 1px;
-  opacity: 0;
-  position: absolute;
+.menu-visibility-switch:hover {
+  background: rgba(88, 101, 242, 0.72);
+  color: #ffffff;
 }
 
 .topbar-tabs {
@@ -1127,13 +1129,13 @@ h3 {
 }
 
 .selection-mode-switch input:checked + .switch-track,
-.menu-visibility-switch input:checked + .switch-track {
+.menu-visibility-switch.active .switch-track {
   background: var(--color-green);
   border-color: var(--color-green);
 }
 
 .selection-mode-switch input:checked + .switch-track::after,
-.menu-visibility-switch input:checked + .switch-track::after {
+.menu-visibility-switch.active .switch-track::after {
   transform: translateX(20px);
 }
 
@@ -2503,16 +2505,19 @@ body:has(.app-shell.left-menu-hidden) {
 }
 
 .left-menu-hidden .topbar {
-  backdrop-filter: blur(18px);
-  display: grid;
-  grid-template-columns: auto auto;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  display: block;
   left: 8px;
   margin: 0;
-  max-width: min(calc(100vw - 16px), 360px);
+  max-width: none;
+  padding: 0;
+  pointer-events: none;
   position: fixed;
   top: 8px;
   width: auto;
-  z-index: 20;
+  z-index: 100;
 }
 
 .left-menu-hidden .topbar-tabs,
@@ -2525,13 +2530,24 @@ body:has(.app-shell.left-menu-hidden) {
   display: none;
 }
 
-.left-menu-hidden .brand-mark,
-.left-menu-hidden .menu-visibility-switch {
-  justify-self: stretch;
+.left-menu-hidden .brand-mark {
+  display: none;
 }
 
-.left-menu-hidden .brand-mark {
-  inline-size: 100%;
+.left-menu-hidden .menu-visibility-switch {
+  align-items: center;
+  backdrop-filter: blur(18px);
+  background: rgba(7, 9, 31, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.42);
+  display: inline-flex;
+  min-height: 44px;
+  padding: 9px 12px;
+  pointer-events: auto;
+}
+
+.left-menu-hidden .menu-visibility-switch:hover {
+  background: rgba(88, 101, 242, 0.92);
 }
 
 .left-menu-hidden .exercise-view {

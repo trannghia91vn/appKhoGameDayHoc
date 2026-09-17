@@ -2091,15 +2091,16 @@ function LauncherApp({ accountRole, onLogout }: LauncherAppProps) {
             <span className="version-badge">v{APP_VERSION}</span>
           </div>
         </div>
-        <label className="menu-visibility-switch">
-          <span>Menu trái</span>
-          <input
-            checked={isLeftMenuVisible}
-            onChange={(event) => setIsLeftMenuVisible(event.target.checked)}
-            type="checkbox"
-          />
+        <button
+          aria-pressed={isLeftMenuVisible}
+          className={isLeftMenuVisible ? "menu-visibility-switch active" : "menu-visibility-switch"}
+          onClick={() => setIsLeftMenuVisible((visible) => !visible)}
+          title={isLeftMenuVisible ? "Ẩn menu trái" : "Hiện menu trái"}
+          type="button"
+        >
+          <span>{isLeftMenuVisible ? "Ẩn menu" : "Hiện menu"}</span>
           <span className="switch-track" aria-hidden="true" />
-        </label>
+        </button>
         <div className="topbar-tabs">
           <button
             className={activePage === "library" ? "topbar-tab active" : "topbar-tab"}
